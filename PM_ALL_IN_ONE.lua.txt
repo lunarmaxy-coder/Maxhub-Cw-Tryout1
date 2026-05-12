@@ -1,0 +1,1012 @@
+--[[
+    Project Mugetsu — All In One Hub
+    RE Source: MaxHub Sample 3
+    UI: Built-in ScreenGui (no external dependencies)
+    Compatible: Delta Executor (Android/iOS)
+]]
+
+-- ═══════════════════════════════════════════════
+--              SERVICES & LOCALS
+-- ═══════════════════════════════════════════════
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local CoreGui          = game:GetService("CoreGui")
+
+local LP    = Players.LocalPlayer
+local Char  = LP.Character or LP.CharacterAdded:Wait()
+local Hum   = Char:WaitForChild("Humanoid")
+local HRP   = Char:WaitForChild("HumanoidRootPart")
+
+LP.CharacterAdded:Connect(function(c)
+    Char = c
+    Hum  = c:WaitForChild("Humanoid")
+    HRP  = c:WaitForChild("HumanoidRootPart")
+    _flyBV = nil; _flyBG = nil
+    _staminaThread = nil
+    _setupFallDmg()
+    _setupAutoRespawn()
+end)
+
+-- ═══════════════════════════════════════════════
+--                  STATE
+-- ═══════════════════════════════════════════════
+local S = {
+    Parry         = false,
+    ParryDist     = 18,
+    ParryChance   = 100,
+    ParryTiming   = 0.3,
+    KillAura      = false,
+    KillAuraDist  = 6,
+    KillMethod    = "VIM",
+    TorsoHB       = false,
+    TorsoSize     = 6,
+    MeleeExt      = false,
+    MeleeSize     = 7,
+    Speed         = false,
+    WalkSpeed     = 30,
+    Fly           = false,
+    FlySpeed      = 60,
+    SuperJump     = false,
+    JumpHeight    = 150,
+    NoDashCD      = false,
+    NoJumpCD      = false,
+    NoRagdoll     = false,
+    NoParryStun   = false,
+    NoFallDmg     = false,
+    NoExpKB       = false,
+    InfStamina    = false,
+    AutoRespawn   = false,
+    ESP           = false,
+    Chams         = false,
+}
+
+-- ═══════════════════════════════════════════════
+--                   UI SYSTEM
+-- ═══════════════════════════════════════════════
+-- Remove old gui if re-run
+pcall(function()
+    CoreGui:FindFirstChild("PMHUB"):Destroy()
+end)
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "PMHUB"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = CoreGui
+
+-- ── THEME ──────────────────────────────────────
+local T = {
+    BG         = Color3.fromRGB(15, 15, 20),
+    Panel      = Color3.fromRGB(22, 22, 30),
+    Header     = Color3.fromRGB(30, 30, 42),
+    Accent     = Color3.fromRGB(100, 80, 220),
+    AccentDim  = Color3.fromRGB(60, 48, 140),
+    ON         = Color3.fromRGB(80, 220, 120),
+    OFF        = Color3.fromRGB(200, 60, 60),
+    Text       = Color3.fromRGB(230, 230, 240),
+    TextDim    = Color3.fromRGB(140, 140, 160),
+    Border     = Color3.fromRGB(50, 50, 70),
+    TabActive  = Color3.fromRGB(100, 80, 220),
+    TabIdle    = Color3.fromRGB(35, 35, 48),
+}
+
+-- ── HELPERS ────────────────────────────────────
+local function corner(r, p)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r or 6)
+    c.Parent = p
+    return c
+end
+
+local function stroke(t, c, p)
+    local s = Instance.new("UIStroke")
+    s.Thickness = t or 1
+    s.Color = c or T.Border
+    s.Parent = p
+    return s
+end
+
+local function label(txt, sz, col, parent, xalign)
+    local l = Instance.new("TextLabel")
+    l.Text = txt
+    l.TextSize = sz or 13
+    l.TextColor3 = col or T.Text
+    l.BackgroundTransparency = 1
+    l.Font = Enum.Font.GothamBold
+    l.TextXAlignment = xalign or Enum.TextXAlignment.Left
+    l.Size = UDim2.new(1, 0, 1, 0)
+    l.Parent = parent
+    return l
+end
+
+local function makeFrame(sz, pos, col, parent)
+    local f = Instance.new("Frame")
+    f.Size = sz
+    f.Position = pos or UDim2.new(0,0,0,0)
+    f.BackgroundColor3 = col or T.Panel
+    f.BorderSizePixel = 0
+    f.Parent = parent
+    return f
+end
+
+-- ── MAIN WINDOW ────────────────────────────────
+local Win = makeFrame(
+    UDim2.new(0, 340, 0, 460),
+    UDim2.new(0.5, -170, 0.5, -230),
+    T.BG,
+    ScreenGui
+)
+corner(10, Win)
+stroke(1.5, T.Border, Win)
+
+-- Shadow
+local Shadow = Instance.new("ImageLabel")
+Shadow.Size = UDim2.new(1, 30, 1, 30)
+Shadow.Position = UDim2.new(0, -15, 0, -15)
+Shadow.BackgroundTransparency = 1
+Shadow.Image = "rbxassetid://6014261993"
+Shadow.ImageColor3 = Color3.new(0,0,0)
+Shadow.ImageTransparency = 0.5
+Shadow.ScaleType = Enum.ScaleType.Slice
+Shadow.SliceCenter = Rect.new(49,49,450,450)
+Shadow.ZIndex = 0
+Shadow.Parent = Win
+
+-- ── HEADER ─────────────────────────────────────
+local Header = makeFrame(
+    UDim2.new(1, 0, 0, 42),
+    UDim2.new(0,0,0,0),
+    T.Header,
+    Win
+)
+corner(10, Header)
+-- Fix bottom corners of header
+local HeaderFix = makeFrame(UDim2.new(1,0,0,10), UDim2.new(0,0,1,-10), T.Header, Header)
+
+local TitleLabel = label("  ⚔  PM HUB", 15, T.Text, Header)
+TitleLabel.Size = UDim2.new(1,-50,1,0)
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Minimize button
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 36, 0, 28)
+MinBtn.Position = UDim2.new(1, -42, 0, 7)
+MinBtn.BackgroundColor3 = T.AccentDim
+MinBtn.Text = "─"
+MinBtn.TextColor3 = T.Text
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.TextSize = 14
+MinBtn.BorderSizePixel = 0
+MinBtn.Parent = Header
+corner(6, MinBtn)
+
+local minimized = false
+local ContentArea = makeFrame(UDim2.new(1,0,1,-42), UDim2.new(0,0,0,42), T.BG, Win)
+
+MinBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    ContentArea.Visible = not minimized
+    Win.Size = minimized and UDim2.new(0,340,0,42) or UDim2.new(0,340,0,460)
+    MinBtn.Text = minimized and "▲" or "─"
+end)
+
+-- ── DRAG ───────────────────────────────────────
+local dragging, dragStart, startPos
+Header.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        dragging  = true
+        dragStart = inp.Position
+        startPos  = Win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(inp)
+    if not dragging then return end
+    if inp.UserInputType == Enum.UserInputType.MouseMovement
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        local delta = inp.Position - dragStart
+        Win.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+UserInputService.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+-- ── TAB BAR ────────────────────────────────────
+local TabBar = makeFrame(UDim2.new(1,-12,0,36), UDim2.new(0,6,0,6), T.Panel, ContentArea)
+corner(8, TabBar)
+
+local TabLayout = Instance.new("UIListLayout")
+TabLayout.FillDirection = Enum.FillDirection.Horizontal
+TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+TabLayout.Padding = UDim.new(0, 3)
+TabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+TabLayout.Parent = TabBar
+
+-- ── SCROLL AREA ────────────────────────────────
+local Scroll = Instance.new("ScrollingFrame")
+Scroll.Size = UDim2.new(1,-12,1,-54)
+Scroll.Position = UDim2.new(0,6,0,48)
+Scroll.BackgroundTransparency = 1
+Scroll.BorderSizePixel = 0
+Scroll.ScrollBarThickness = 3
+Scroll.ScrollBarImageColor3 = T.Accent
+Scroll.CanvasSize = UDim2.new(0,0,0,0)
+Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Scroll.Parent = ContentArea
+
+local ScrollLayout = Instance.new("UIListLayout")
+ScrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ScrollLayout.Padding = UDim.new(0, 5)
+ScrollLayout.Parent = Scroll
+
+-- ── TAB + SECTION SYSTEM ───────────────────────
+local tabs       = {}  -- name -> { btn, sections={} }
+local activeTab  = nil
+local tabOrder   = 0
+
+local function showTab(name)
+    for tname, tdata in pairs(tabs) do
+        local isActive = (tname == name)
+        tdata.btn.BackgroundColor3 = isActive and T.TabActive or T.TabIdle
+        tdata.btn.TextColor3       = isActive and T.Text or T.TextDim
+        for _, sec in pairs(tdata.sections) do
+            sec.Visible = isActive
+        end
+    end
+    activeTab = name
+end
+
+local function addTab(name, icon)
+    tabOrder = tabOrder + 1
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 72, 0, 28)
+    btn.BackgroundColor3 = T.TabIdle
+    btn.Text = (icon or "") .. " " .. name
+    btn.TextColor3 = T.TextDim
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 11
+    btn.BorderSizePixel = 0
+    btn.LayoutOrder = tabOrder
+    btn.Parent = TabBar
+    corner(6, btn)
+
+    local data = { btn = btn, sections = {} }
+    tabs[name] = data
+
+    btn.MouseButton1Click:Connect(function()
+        showTab(name)
+    end)
+
+    return name
+end
+
+local function addSection(tabName, title)
+    local sec = makeFrame(UDim2.new(1,0,0,0), nil, Color3.fromRGB(0,0,0,0), Scroll)
+    sec.BackgroundTransparency = 1
+    sec.AutomaticSize = Enum.AutomaticSize.Y
+    sec.Visible = false
+
+    local secLayout = Instance.new("UIListLayout")
+    secLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    secLayout.Padding = UDim.new(0, 4)
+    secLayout.Parent = sec
+
+    if title then
+        local hdr = makeFrame(UDim2.new(1,-10,0,26), UDim2.new(0,5,0,0), T.Header, sec)
+        corner(6, hdr)
+        local hl = label("  " .. title, 11, T.Accent, hdr)
+        hl.TextXAlignment = Enum.TextXAlignment.Left
+    end
+
+    table.insert(tabs[tabName].sections, sec)
+    return sec
+end
+
+-- ── TOGGLE ─────────────────────────────────────
+local toggleBtns = {}
+
+local function addToggle(parent, key, text, callback)
+    local row = makeFrame(UDim2.new(1,-10,0,36), UDim2.new(0,5,0,0), T.Panel, parent)
+    row.AutomaticSize = Enum.AutomaticSize.None
+    corner(6, row)
+
+    local lbl = label("  " .. text, 12, T.Text, row)
+    lbl.Size = UDim2.new(1,-56,1,0)
+
+    local pill = Instance.new("TextButton")
+    pill.Size = UDim2.new(0, 46, 0, 22)
+    pill.Position = UDim2.new(1,-52,0.5,-11)
+    pill.Font = Enum.Font.GothamBold
+    pill.TextSize = 10
+    pill.BorderSizePixel = 0
+    pill.Parent = row
+    corner(11, pill)
+
+    local function update()
+        local on = S[key]
+        pill.Text = on and "ON" or "OFF"
+        pill.BackgroundColor3 = on and T.ON or T.OFF
+        pill.TextColor3 = on and Color3.new(0,0,0) or T.Text
+    end
+    update()
+
+    pill.MouseButton1Click:Connect(function()
+        S[key] = not S[key]
+        update()
+        if callback then callback(S[key]) end
+    end)
+
+    toggleBtns[key] = { pill = pill, update = update }
+    return row
+end
+
+-- ── SLIDER ─────────────────────────────────────
+local function addSlider(parent, label_text, key, min, max, step)
+    step = step or 1
+    local row = makeFrame(UDim2.new(1,-10,0,50), UDim2.new(0,5,0,0), T.Panel, parent)
+    corner(6, row)
+
+    local lbl = label("  " .. label_text, 11, T.TextDim, row)
+    lbl.Size = UDim2.new(0.65,0,0,22)
+    lbl.Position = UDim2.new(0,0,0,0)
+
+    local valLabel = label(tostring(S[key]), 11, T.Accent, row, Enum.TextXAlignment.Right)
+    valLabel.Size = UDim2.new(0.3,0,0,22)
+    valLabel.Position = UDim2.new(0.65,0,0,0)
+
+    local track = makeFrame(UDim2.new(1,-16,0,6), UDim2.new(0,8,0,30), T.Border, row)
+    corner(3, track)
+
+    local fill = makeFrame(UDim2.new(0,0,1,0), UDim2.new(0,0,0,0), T.Accent, track)
+    corner(3, fill)
+
+    local function setValue(v)
+        v = math.clamp(math.round(v / step) * step, min, max)
+        S[key] = v
+        valLabel.Text = tostring(v)
+        fill.Size = UDim2.new((v - min) / (max - min), 0, 1, 0)
+    end
+    setValue(S[key])
+
+    local sliding = false
+    track.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            sliding = true
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            sliding = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if not sliding then return end
+        if inp.UserInputType == Enum.UserInputType.MouseMovement
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            local trackPos  = track.AbsolutePosition.X
+            local trackSize = track.AbsoluteSize.X
+            local rel = math.clamp((inp.Position.X - trackPos) / trackSize, 0, 1)
+            setValue(min + (max - min) * rel)
+        end
+    end)
+
+    return row
+end
+
+-- ── BUTTON ─────────────────────────────────────
+local function addButton(parent, text, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1,-10,0,34)
+    btn.Position = UDim2.new(0,5,0,0)
+    btn.BackgroundColor3 = T.AccentDim
+    btn.Text = text
+    btn.TextColor3 = T.Text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 12
+    btn.BorderSizePixel = 0
+    btn.Parent = parent
+    corner(6, btn)
+    btn.MouseButton1Click:Connect(callback)
+    return btn
+end
+
+-- ── DROPDOWN (simple) ──────────────────────────
+local function addDropdown(parent, lbl_text, key, options)
+    local row = makeFrame(UDim2.new(1,-10,0,36), UDim2.new(0,5,0,0), T.Panel, parent)
+    corner(6, row)
+
+    local lbl = label("  " .. lbl_text, 12, T.Text, row)
+    lbl.Size = UDim2.new(0.5,0,1,0)
+
+    local currentIdx = 1
+    for i,v in pairs(options) do
+        if v == S[key] then currentIdx = i break end
+    end
+
+    local dropBtn = Instance.new("TextButton")
+    dropBtn.Size = UDim2.new(0.46,0,0,26)
+    dropBtn.Position = UDim2.new(0.52,0,0.5,-13)
+    dropBtn.BackgroundColor3 = T.AccentDim
+    dropBtn.Text = "◀  " .. tostring(S[key]) .. "  ▶"
+    dropBtn.TextColor3 = T.Accent
+    dropBtn.Font = Enum.Font.GothamBold
+    dropBtn.TextSize = 11
+    dropBtn.BorderSizePixel = 0
+    dropBtn.Parent = row
+    corner(5, dropBtn)
+
+    dropBtn.MouseButton1Click:Connect(function()
+        currentIdx = (currentIdx % #options) + 1
+        S[key] = options[currentIdx]
+        dropBtn.Text = "◀  " .. tostring(S[key]) .. "  ▶"
+    end)
+
+    return row
+end
+
+-- ═══════════════════════════════════════════════
+--               BUILD TABS & SECTIONS
+-- ═══════════════════════════════════════════════
+
+-- TAB: COMBAT
+local t_combat = addTab("Combat","⚔")
+local s_parry  = addSection("Combat","AUTO PARRY")
+addToggle(s_parry,  "Parry",    "Auto Parry")
+addSlider(s_parry,  "Parry Distance",  "ParryDist",  1, 50, 1)
+addSlider(s_parry,  "Parry Chance %",  "ParryChance",1,100, 1)
+addSlider(s_parry,  "Parry Timing",    "ParryTiming",0.05,1,0.05)
+
+local s_aura   = addSection("Combat","KILL AURA")
+addToggle(s_aura,   "KillAura", "Kill Aura")
+addDropdown(s_aura, "Method", "KillMethod", {"VIM","Remote"})
+addSlider(s_aura,   "Aura Distance",   "KillAuraDist",1,30,1)
+
+local s_hb     = addSection("Combat","HITBOX")
+addToggle(s_hb,     "TorsoHB",  "Torso Hitbox Expand")
+addSlider(s_hb,     "Torso Size",   "TorsoSize",  1,20,1)
+addToggle(s_hb,     "MeleeExt", "Melee Extender")
+addSlider(s_hb,     "Melee Size",   "MeleeSize",  1,20,1)
+
+-- TAB: PLAYER
+local t_player = addTab("Player","🧍")
+local s_move   = addSection("Player","MOVEMENT")
+addToggle(s_move,   "Speed",    "Speed Hack")
+addSlider(s_move,   "Walk Speed",  "WalkSpeed",  16,100,1)
+addToggle(s_move,   "Fly",      "Fly")
+addSlider(s_move,   "Fly Speed",   "FlySpeed",   10,200,5)
+addToggle(s_move,   "SuperJump","Super Jump")
+addSlider(s_move,   "Jump Height", "JumpHeight", 50,500,10)
+addToggle(s_move,   "NoDashCD", "No Dash Cooldown")
+addToggle(s_move,   "NoJumpCD", "No Jump Cooldown")
+
+local s_blatant= addSection("Player","BLATANT")
+addToggle(s_blatant,"NoRagdoll","No Ragdoll")
+addToggle(s_blatant,"NoParryStun","No Parry Stun")
+addToggle(s_blatant,"NoExpKB",  "No Explosive KB")
+addToggle(s_blatant,"NoFallDmg","No Fall Damage")
+addToggle(s_blatant,"InfStamina","Infinite Stamina")
+addToggle(s_blatant,"AutoRespawn","Auto Respawn")
+
+-- TAB: VISUALS
+local t_vis    = addTab("Visual","👁")
+local s_esp    = addSection("Visual","ESP")
+addToggle(s_esp,    "ESP",      "Player ESP")
+addToggle(s_esp,    "Chams",    "Chams (Through Wall)")
+
+-- TAB: MISC
+local t_misc   = addTab("Misc","⚙")
+local s_info   = addSection("Misc","INFO")
+local infoRow  = makeFrame(UDim2.new(1,-10,0,54), UDim2.new(0,5,0,0), T.Panel, s_info)
+corner(6, infoRow)
+local infoLbl  = label(
+    "  RE: MaxHub Sample 3\n  98% Recovered\n  Build: Sesi 51",
+    11, T.TextDim, infoRow
+)
+infoLbl.TextXAlignment = Enum.TextXAlignment.Left
+infoLbl.LineHeight = 1.5
+
+local s_panic  = addSection("Misc","PANIC")
+addButton(s_panic, "⚠  MATIKAN SEMUA FITUR", function()
+    for k,_ in pairs(S) do
+        if type(S[k]) == "boolean" then S[k] = false end
+    end
+    for _, data in pairs(toggleBtns) do data.update() end
+    if _flyBV then _flyBV:Destroy(); _flyBV = nil end
+    if _flyBG then _flyBG:Destroy(); _flyBG = nil end
+    if Hum then
+        Hum.PlatformStand = false
+        Hum.WalkSpeed = 16
+        Hum.JumpHeight = 7.2
+    end
+    -- Remove all chams
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("SelectionBox") and v.Name == "PMCHAMS" then v:Destroy() end
+    end
+    warn("[PM HUB] ⚠ Semua fitur dimatikan!")
+end)
+
+-- Show first tab
+showTab("Combat")
+
+-- ═══════════════════════════════════════════════
+--             LOGIC MODULES
+-- ═══════════════════════════════════════════════
+
+-- ── PARRY ──────────────────────────────────────
+local _parryRemote, _lastParry, _parryFired = nil, 0, false
+
+local function _findParryRemote()
+    for _, v in pairs(game:GetDescendants()) do
+        if (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then
+            local n = v.Name:lower()
+            if n:find("parry") or n:find("block") then return v end
+        end
+    end
+    return nil
+end
+
+local function _doParry()
+    if _parryRemote then
+        if _parryRemote:IsA("RemoteEvent") then
+            _parryRemote:FireServer()
+        else
+            pcall(function() _parryRemote:InvokeServer() end)
+        end
+    else
+        local VIM = game:GetService("VirtualInputManager")
+        if VIM then
+            VIM:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+            task.delay(0.05, function()
+                VIM:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+            end)
+        end
+    end
+end
+
+local function _tryParry(reason)
+    if not S.Parry then return end
+    if (tick() - _lastParry) < 0.1 then return end
+    if _parryFired then return end
+    if math.random(1,100) > S.ParryChance then return end
+    _parryFired = true
+    _lastParry  = tick()
+    task.delay(S.ParryTiming * 0.5, function()
+        _doParry()
+        task.delay(S.ParryTiming, function() _parryFired = false end)
+    end)
+end
+
+local _ATTACK_KEYS = {"attack","combo","swing","slash","punch","strike","hit","melee","ability"}
+local function _isAttackAnim(n)
+    n = n:lower()
+    for _, k in pairs(_ATTACK_KEYS) do if n:find(k) then return true end end
+    return false
+end
+
+local function _watchPlayer(player)
+    if player == LP then return end
+    local function onChar(c)
+        local h  = c:WaitForChild("Humanoid", 5)
+        local rp = c:WaitForChild("HumanoidRootPart", 5)
+        if not h or not rp then return end
+        h.AnimationPlayed:Connect(function(track)
+            if not S.Parry then return end
+            if (HRP.Position - rp.Position).Magnitude > S.ParryDist then return end
+            if _isAttackAnim(track.Name) then _tryParry("anim") end
+        end)
+        local function hookSnd(s)
+            if not s:IsA("Sound") then return end
+            s.Played:Connect(function()
+                if not S.Parry then return end
+                if (HRP.Position - rp.Position).Magnitude > S.ParryDist then return end
+                local n = s.Name:lower()
+                if n:find("attack") or n:find("swing") or n:find("hit") then _tryParry("snd") end
+            end)
+        end
+        for _, v in pairs(c:GetDescendants()) do hookSnd(v) end
+        c.DescendantAdded:Connect(hookSnd)
+    end
+    if player.Character then onChar(player.Character) end
+    player.CharacterAdded:Connect(onChar)
+end
+
+_parryRemote = _findParryRemote()
+for _, p in pairs(Players:GetPlayers()) do _watchPlayer(p) end
+Players.PlayerAdded:Connect(_watchPlayer)
+
+-- ── KILL AURA / HITBOX ─────────────────────────
+local _attackRemote, _lastAura = nil, 0
+local _origSizes = {}
+
+local function _findAttackRemote()
+    for _, v in pairs(game:GetDescendants()) do
+        if (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then
+            local n = v.Name:lower()
+            if n:find("useactorabili") or n:find("combohit") or n:find("dealdam") then
+                return v
+            end
+        end
+    end
+    return nil
+end
+_attackRemote = _findAttackRemote()
+
+local function _expandTorso(c, sz)
+    local p = c:FindFirstChild("HumanoidRootPart")
+    if not p then return end
+    local id = tostring(c)
+    if not _origSizes[id] then _origSizes[id] = p.Size end
+    p.Size = Vector3.new(sz, sz, sz)
+    p.Transparency = 0.9
+    p.CanCollide = false
+end
+local function _restoreTorso(c)
+    local p = c:FindFirstChild("HumanoidRootPart")
+    if not p then return end
+    local id = tostring(c)
+    if _origSizes[id] then p.Size = _origSizes[id]; _origSizes[id] = nil end
+end
+
+local function _getEnemies()
+    local list = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        if p == LP then continue end
+        local c = p.Character
+        if not c then continue end
+        local h = c:FindFirstChild("Humanoid")
+        local r = c:FindFirstChild("HumanoidRootPart")
+        if not h or not r or h.Health <= 0 then continue end
+        local d = (HRP.Position - r.Position).Magnitude
+        if d <= S.KillAuraDist then
+            table.insert(list, {c=c, hrp=r, dist=d})
+        end
+    end
+    table.sort(list, function(a,b) return a.dist < b.dist end)
+    return list
+end
+
+-- ── FLY ────────────────────────────────────────
+local _flyBV, _flyBG
+
+local function _enableFly()
+    Hum.PlatformStand = true
+    if not _flyBV then
+        _flyBV = Instance.new("BodyVelocity")
+        _flyBV.MaxForce = Vector3.new(1e9,1e9,1e9)
+        _flyBV.P = 9999
+        _flyBV.Parent = HRP
+    end
+    if not _flyBG then
+        _flyBG = Instance.new("BodyGyro")
+        _flyBG.MaxTorque = Vector3.new(1e9,1e9,1e9)
+        _flyBG.P = 9999; _flyBG.D = 100
+        _flyBG.Parent = HRP
+    end
+end
+local function _disableFly()
+    Hum.PlatformStand = false
+    if _flyBV then _flyBV:Destroy(); _flyBV = nil end
+    if _flyBG then _flyBG:Destroy(); _flyBG = nil end
+end
+
+-- ── STAMINA ────────────────────────────────────
+local _staminaThread
+local function _startStamina()
+    if _staminaThread then return end
+    _staminaThread = task.spawn(function()
+        local keys = {"Stamina","stamina","SP","Energy","energy","Reiatsu","CursedEnergy"}
+        while S.InfStamina do
+            if Char then
+                for _, k in pairs(keys) do
+                    local v = Char:GetAttribute(k)
+                    if type(v)=="number" then Char:SetAttribute(k, 999999) end
+                    if Hum then
+                        local vv = Hum:GetAttribute(k)
+                        if type(vv)=="number" then Hum:SetAttribute(k, 999999) end
+                    end
+                end
+            end
+            task.wait(0.05)
+        end
+        _staminaThread = nil
+    end)
+end
+
+-- ── NO FALL DMG ────────────────────────────────
+local _fallConn
+function _setupFallDmg()
+    if _fallConn then _fallConn:Disconnect() end
+    _fallConn = Hum.HealthChanged:Connect(function()
+        if S.NoFallDmg and Hum and Hum.Parent then
+            task.defer(function()
+                if S.NoFallDmg and Hum and Hum.Parent then
+                    Hum.Health = Hum.MaxHealth
+                end
+            end)
+        end
+    end)
+end
+
+function _setupAutoRespawn()
+    Hum.Died:Connect(function()
+        if S.AutoRespawn then
+            task.delay(1.5, function() LP:LoadCharacter() end)
+        end
+    end)
+end
+
+_setupFallDmg()
+_setupAutoRespawn()
+
+-- ── ESP ────────────────────────────────────────
+local _espObjs   = {}
+local _chamObjs  = {}
+local Camera     = workspace.CurrentCamera
+
+local function _makeESP(player)
+    if player == LP or _espObjs[player.UserId] then return end
+    local function txt(col)
+        local t = Drawing.new("Text")
+        t.Visible=false; t.Center=true; t.Outline=true
+        t.Size=13; t.Font=Drawing.Fonts.Plex
+        t.Color = col or Color3.new(1,1,1)
+        return t
+    end
+    local function ln(col)
+        local l = Drawing.new("Line")
+        l.Visible=false; l.Thickness=1.5
+        l.Color = col or Color3.fromRGB(255,60,60)
+        return l
+    end
+    local o = {
+        name   = txt(),
+        dist   = txt(Color3.fromRGB(190,190,190)),
+        hpTxt  = txt(Color3.fromRGB(100,255,100)),
+        hpBg   = ln(Color3.fromRGB(40,40,40)),
+        hpBar  = ln(Color3.fromRGB(100,255,100)),
+        boxes  = {},
+    }
+    for i=1,8 do table.insert(o.boxes, ln()) end
+    _espObjs[player.UserId] = o
+end
+local function _removeESP(player)
+    local o = _espObjs[player.UserId]
+    if not o then return end
+    for _, v in pairs(o) do
+        if type(v)=="table" then for _,l in pairs(v) do if l.Remove then l:Remove() end end
+        elseif v.Remove then v:Remove() end
+    end
+    _espObjs[player.UserId] = nil
+end
+local function _hideESP(o)
+    if not o then return end
+    for _, v in pairs(o) do
+        if type(v)=="table" then for _,l in pairs(v) do if l.Visible~=nil then l.Visible=false end end
+        elseif v.Visible~=nil then v.Visible=false end
+    end
+end
+local function _drawBox(lines, hs, fs)
+    local bw = (fs-hs).Magnitude*0.45
+    local cw = bw*0.3; local ch = (fs.Y-hs.Y)*0.25
+    local tl=Vector2.new(hs.X-bw,hs.Y); local tr=Vector2.new(hs.X+bw,hs.Y)
+    local bl=Vector2.new(fs.X-bw,fs.Y); local br=Vector2.new(fs.X+bw,fs.Y)
+    local pts = {
+        tl, tl+Vector2.new(cw,0),  tl, tl+Vector2.new(0,ch),
+        tr, tr-Vector2.new(cw,0),  tr, tr+Vector2.new(0,ch),
+        bl, bl+Vector2.new(cw,0),  bl, bl-Vector2.new(0,ch),
+        br, br-Vector2.new(cw,0),  br, br-Vector2.new(0,ch),
+    }
+    for i=1,8 do
+        lines[i].From = pts[i*2-1]
+        lines[i].To   = pts[i*2]
+        lines[i].Visible = true
+    end
+end
+
+local function _updateChams(player)
+    local id = player.UserId
+    if not S.Chams then
+        if _chamObjs[id] then _chamObjs[id]:Destroy(); _chamObjs[id]=nil end
+        return
+    end
+    local c = player.Character
+    if not c then return end
+    if not _chamObjs[id] then
+        local h = Instance.new("SelectionBox")
+        h.Name = "PMCHAMS"
+        h.SurfaceTransparency = 0.75
+        h.LineThickness = 0.04
+        h.Color3 = Color3.fromRGB(255,60,60)
+        h.SurfaceColor3 = Color3.fromRGB(255,60,60)
+        h.Adornee = c
+        h.Parent = workspace
+        _chamObjs[id] = h
+    end
+end
+
+for _, p in pairs(Players:GetPlayers()) do _makeESP(p) end
+Players.PlayerAdded:Connect(_makeESP)
+Players.PlayerRemoving:Connect(function(p)
+    _removeESP(p)
+    if _chamObjs[p.UserId] then _chamObjs[p.UserId]:Destroy(); _chamObjs[p.UserId]=nil end
+end)
+
+-- ═══════════════════════════════════════════════
+--             MAIN LOOPS
+-- ═══════════════════════════════════════════════
+RunService.Heartbeat:Connect(function()
+    if not Hum or not Char or not HRP then return end
+
+    -- Speed
+    if S.Speed then Hum.WalkSpeed = S.WalkSpeed end
+
+    -- Jump
+    if S.SuperJump then
+        Hum.JumpHeight = S.JumpHeight
+        if Hum.UseJumpPower then Hum.JumpPower = S.JumpHeight*0.5 end
+    end
+
+    -- Fly
+    if S.Fly then
+        if not _flyBV then _enableFly() end
+        local cf = Camera.CFrame
+        _flyBG.CFrame = cf
+        local d = Vector3.zero
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then d=d+cf.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then d=d-cf.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then d=d-cf.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then d=d+cf.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space)     then d=d+Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then d=d-Vector3.new(0,1,0) end
+        _flyBV.Velocity = (d.Magnitude>0 and d.Unit or d)*S.FlySpeed
+    elseif _flyBV then
+        _disableFly()
+    end
+
+    -- Blatant
+    if S.NoRagdoll then
+        if not S.Fly then Hum.PlatformStand = false end
+        if Char:GetAttribute("Ragdolled")==true then Char:SetAttribute("Ragdolled",false) end
+    end
+    if S.NoParryStun then
+        if Char:GetAttribute("Stunned")==true    then Char:SetAttribute("Stunned",false) end
+        if Char:GetAttribute("ParryStun")==true  then Char:SetAttribute("ParryStun",false) end
+    end
+    if S.NoExpKB and Char:GetAttribute("Knockback")~=nil then
+        Char:SetAttribute("Knockback", Vector3.zero)
+    end
+    if S.NoDashCD then
+        for _, k in pairs({"DashCooldown","dashCooldown","DashCD"}) do
+            if Char:GetAttribute(k)~=nil then Char:SetAttribute(k,0) end
+        end
+    end
+    if S.NoJumpCD then
+        for _, k in pairs({"JumpCooldown","jumpCooldown","JumpCD"}) do
+            if Char:GetAttribute(k)~=nil then Char:SetAttribute(k,0) end
+        end
+    end
+    if S.InfStamina and not _staminaThread then _startStamina() end
+
+    -- Kill Aura
+    if S.KillAura then
+        local now = tick()
+        if (now - _lastAura) >= 0.1 then
+            _lastAura = now
+            local enemies = _getEnemies()
+            if #enemies > 0 then
+                local t = enemies[1]
+                if S.KillMethod == "VIM" then
+                    local orig = HRP.CFrame
+                    HRP.CFrame = t.hrp.CFrame * CFrame.new(0,0,-2)
+                    task.delay(0.04, function()
+                        if HRP and HRP.Parent then HRP.CFrame = orig end
+                    end)
+                else
+                    if _attackRemote then
+                        if _attackRemote:IsA("RemoteEvent") then
+                            _attackRemote:FireServer(t.c, t.hrp.Position)
+                        else
+                            pcall(function() _attackRemote:InvokeServer(t.c, t.hrp.Position) end)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Hitbox
+    if S.TorsoHB then
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LP and p.Character then _expandTorso(p.Character, S.TorsoSize) end
+        end
+    else
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LP and p.Character and _origSizes[tostring(p.Character)] then
+                _restoreTorso(p.Character)
+            end
+        end
+    end
+
+    -- Melee Extender
+    if S.MeleeExt and Char then
+        for _, v in pairs(Char:GetDescendants()) do
+            if v:IsA("BasePart") and v.Name ~= "HumanoidRootPart"
+               and v.Name ~= "Head" and not v.Name:lower():find("arm")
+               and not v.Name:lower():find("leg") and not v.Name:lower():find("torso") then
+                if v.Size.Magnitude < S.MeleeSize then
+                    v.Size = Vector3.new(S.MeleeSize, v.Size.Y, S.MeleeSize)
+                end
+            end
+        end
+    end
+end)
+
+-- ESP Render
+RunService.RenderStepped:Connect(function()
+    local lhrp = Char and Char:FindFirstChild("HumanoidRootPart")
+    for _, player in pairs(Players:GetPlayers()) do
+        if player == LP then continue end
+        local c   = player.Character
+        local hum = c and c:FindFirstChild("Humanoid")
+        local hrp = c and c:FindFirstChild("HumanoidRootPart")
+        local head= c and c:FindFirstChild("Head")
+        local o   = _espObjs[player.UserId]
+        if not c or not hum or not hrp or not head or not o then
+            _hideESP(o); continue
+        end
+        if hum.Health<=0 then _hideESP(o); continue end
+        local dist = lhrp and (lhrp.Position-hrp.Position).Magnitude or 0
+        if dist > 200 then _hideESP(o); continue end
+
+        local hp,  hOS = Camera:WorldToViewportPoint(head.Position+Vector3.new(0,0.5,0))
+        local fp,  fOS = Camera:WorldToViewportPoint(hrp.Position-Vector3.new(0,3,0))
+        if not hOS then _hideESP(o); continue end
+
+        local hs = Vector2.new(hp.X,hp.Y)
+        local fs = Vector2.new(fp.X,fp.Y)
+
+        if S.ESP then
+            _drawBox(o.boxes, hs, fs)
+            o.name.Text = player.Name
+            o.name.Position = Vector2.new(hs.X, hs.Y-16)
+            o.name.Visible = true
+
+            o.dist.Text = string.format("[%.0f]", dist)
+            o.dist.Position = Vector2.new(fs.X, fs.Y+3)
+            o.dist.Visible = true
+
+            local hpR = hum.Health/hum.MaxHealth
+            local hpC = Color3.fromRGB(math.floor((1-hpR)*255), math.floor(hpR*255), 0)
+            local bw = (fs-hs).Magnitude*0.45
+            o.hpBg.From  = Vector2.new(hs.X-bw-7, hs.Y)
+            o.hpBg.To    = Vector2.new(fs.X-bw-7, fs.Y)
+            o.hpBg.Visible = true
+            o.hpBar.From = Vector2.new(hs.X-bw-7, hs.Y)
+            o.hpBar.To   = Vector2.new(fs.X-bw-7, hs.Y+(fs.Y-hs.Y)*hpR)
+            o.hpBar.Color= hpC
+            o.hpBar.Visible = true
+            o.hpTxt.Text = string.format("%.0f", hum.Health)
+            o.hpTxt.Position = Vector2.new(hs.X-bw-7, hs.Y-13)
+            o.hpTxt.Color = hpC
+            o.hpTxt.Visible = true
+        else
+            _hideESP(o)
+        end
+
+        _updateChams(player)
+    end
+end)
+
+print("[PM HUB] ✅ UI Menu berhasil dimuat!")
