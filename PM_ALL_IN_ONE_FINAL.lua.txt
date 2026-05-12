@@ -1,0 +1,1594 @@
+--[[
+    ╔══════════════════════════════════════════════════╗
+    ║   PROJECT MUGETSU — ALL IN ONE HUB               ║
+    ║   RE Source : MaxHub Sample 5                    ║
+    ║   UI Style  : MaxHub (Sidebar + Content, Blue)   ║
+    ║   Executor  : Delta (Android / iOS)              ║
+    ║   Build     : Final — All Features               ║
+    ╚══════════════════════════════════════════════════╝
+]]
+
+-- ═══════════════════════════════════════════════
+--              SERVICES
+-- ═══════════════════════════════════════════════
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local CoreGui          = game:GetService("CoreGui")
+local SoundService     = game:GetService("SoundService")
+local Workspace        = game:GetService("Workspace")
+local StarterGui       = game:GetService("StarterGui")
+
+local LP   = Players.LocalPlayer
+local Char = LP.Character or LP.CharacterAdded:Wait()
+local Hum  = Char:WaitForChild("Humanoid")
+local HRP  = Char:WaitForChild("HumanoidRootPart")
+local Camera = Workspace.CurrentCamera
+
+-- ═══════════════════════════════════════════════
+--         PRE-DECLARE UPVALUES
+-- ═══════════════════════════════════════════════
+local _flyBV, _flyBG
+local _staminaThread
+local _fallConn
+local _autoRespawnConn
+local _farmThread
+local _setupFallDmg, _setupAutoRespawn
+
+LP.CharacterAdded:Connect(function(c)
+    Char = c
+    Hum  = c:WaitForChild("Humanoid")
+    HRP  = c:WaitForChild("HumanoidRootPart")
+    if _flyBV then pcall(function() _flyBV:Destroy() end); _flyBV = nil end
+    if _flyBG then pcall(function() _flyBG:Destroy() end); _flyBG = nil end
+    _staminaThread = nil
+    task.wait(0.5)
+    _setupFallDmg()
+    _setupAutoRespawn()
+end)
+
+-- ═══════════════════════════════════════════════
+--                    STATE
+-- ═══════════════════════════════════════════════
+local S = {
+    -- PLAYER - Movement
+    Speed         = false,
+    WalkSpeed     = 17,
+    Fly           = false,
+    FlySpeed      = 50,
+    SuperJump     = false,
+    JumpHeight    = 150,
+    NoDashCD      = false,
+    NoJumpCD      = false,
+    WalkOnWater   = false,
+
+    -- PLAYER - Blatant
+    NoRagdoll     = false,
+    NoParryStun   = false,
+    NoExpKB       = false,
+    NoFallDmg     = false,
+
+    -- PLAYER - Helper
+    InfStamina    = false,
+    AutoRespawn   = false,
+
+    -- COMBAT
+    TorsoHB       = false,
+    TorsoSize     = 6,
+    MeleeExt      = false,
+    MeleeSize     = 7,
+    ShowDmgPts    = false,
+    KillAura      = false,
+    KillAuraDist  = 6,
+    KillMethod    = "VIM",
+
+    -- PARRY
+    Parry         = false,
+    ParryDist     = 18,
+    ParryChance   = 100,
+    ParryTiming   = 0.3,
+    ParryCooldown = 0,
+    ParryInvis    = false,
+    AutoParryToggler = false,
+    ParryDetect   = "Animation, Sound",
+    ParryMethod   = "Module",
+
+    -- SOUNDS
+    CustomSounds  = false,
+    Volume        = 100,
+
+    -- VISUALS
+    ESP           = false,
+    Chams         = false,
+    ShowHpBar     = true,
+    ShowNames     = true,
+    ShowDist      = true,
+    CornerBox     = true,
+
+    -- UTILITY
+    InstantC4     = false,
+    InstantThrow  = false,
+    InstantUse    = false,
+    NoUtilDmg     = false,
+    AutoBearTrap  = false,
+    AutoClaymore  = false,
+
+    -- MISC
+    FakeSwing     = false,
+    NoEffects     = false,
+
+    -- FARMING
+    Autofarm      = false,
+    FarmDist      = 30,
+    TweenSpeed    = 50,
+    MoveBehind    = false,
+    HealthMoveAt  = 30,
+    MoveIfLow     = false,
+    MoveIfParried = false,
+    HealthResetAt = 10,
+    FarmBubble    = false,
+
+    -- ANTI-BAN
+    ChatHop       = false,
+    ChatShowWords = false,
+
+    -- UI
+    AggressiveMouse = false,
+}
+
+-- ═══════════════════════════════════════════════
+--                   UI SYSTEM
+-- ═══════════════════════════════════════════════
+pcall(function()
+    local old = CoreGui:FindFirstChild("PMHUB")
+    if old then old:Destroy() end
+end)
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name             = "PMHUB"
+ScreenGui.ResetOnSpawn     = false
+ScreenGui.ZIndexBehavior   = Enum.ZIndexBehavior.Sibling
+ScreenGui.IgnoreGuiInset   = true
+ScreenGui.Parent           = CoreGui
+
+-- ── TEMA ────────────────────────────────────────
+local T = {
+    WinBg       = Color3.fromRGB(20, 20, 28),
+    Sidebar     = Color3.fromRGB(14, 14, 21),
+    Content     = Color3.fromRGB(24, 24, 34),
+    Accent      = Color3.fromRGB(61,  99, 254),
+    AccentDim   = Color3.fromRGB(28,  46, 130),
+    AccentHover = Color3.fromRGB(80, 120, 255),
+    ToggleON    = Color3.fromRGB(77, 124, 254),
+    ToggleOFF   = Color3.fromRGB(50,  50,  66),
+    KnobColor   = Color3.fromRGB(230, 230, 242),
+    Text        = Color3.fromRGB(228, 228, 240),
+    TextDim     = Color3.fromRGB(115, 115, 140),
+    CatLabel    = Color3.fromRGB(80,  80, 105),
+    Divider     = Color3.fromRGB(34,  34,  50),
+    SliderBg    = Color3.fromRGB(38,  38,  56),
+    SliderFill  = Color3.fromRGB(61,  99, 254),
+    DropBg      = Color3.fromRGB(32,  32,  48),
+    BtnBg       = Color3.fromRGB(32,  32,  48),
+    BtnDanger   = Color3.fromRGB(110, 28,  28),
+    BtnSafe     = Color3.fromRGB(28,  90,  50),
+}
+
+-- ── HELPERS ─────────────────────────────────────
+local function corner(r, p)
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 6); c.Parent = p; return c
+end
+local function pad(l, r, t, b, parent)
+    local p = Instance.new("UIPadding")
+    p.PaddingLeft   = UDim.new(0, l or 0)
+    p.PaddingRight  = UDim.new(0, r or 0)
+    p.PaddingTop    = UDim.new(0, t or 0)
+    p.PaddingBottom = UDim.new(0, b or 0)
+    p.Parent        = parent
+    return p
+end
+local function listLayout(dir, sort, spacing, parent)
+    local l = Instance.new("UIListLayout")
+    l.FillDirection = dir or Enum.FillDirection.Vertical
+    l.SortOrder     = sort or Enum.SortOrder.LayoutOrder
+    l.Padding       = UDim.new(0, spacing or 0)
+    l.Parent        = parent
+    return l
+end
+local function frame(sz, pos, col, parent, trans)
+    local f = Instance.new("Frame")
+    f.Size             = sz
+    f.Position         = pos or UDim2.new(0,0,0,0)
+    f.BackgroundColor3 = col or T.Content
+    f.BackgroundTransparency = trans or 0
+    f.BorderSizePixel  = 0
+    f.Parent           = parent
+    return f
+end
+local function label(txt, sz, col, font, parent)
+    local l = Instance.new("TextLabel")
+    l.Text             = txt or ""
+    l.TextSize         = sz or 12
+    l.TextColor3       = col or T.Text
+    l.Font             = font or Enum.Font.Gotham
+    l.BackgroundTransparency = 1
+    l.BorderSizePixel  = 0
+    l.Parent           = parent
+    return l
+end
+local function tw(t, style)
+    return TweenInfo.new(t or 0.15, style or Enum.EasingStyle.Quad)
+end
+local function tween(obj, info, props)
+    TweenService:Create(obj, info, props):Play()
+end
+
+-- ═══════════════════════════════════════════════
+--                  WINDOW
+-- ═══════════════════════════════════════════════
+local WIN_W  = 460
+local WIN_H  = 490
+local SIDE_W = 145
+
+local Win = frame(
+    UDim2.new(0, WIN_W, 0, WIN_H),
+    UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2),
+    T.WinBg, ScreenGui
+)
+corner(12, Win)
+do  -- border
+    local s = Instance.new("UIStroke")
+    s.Thickness = 1; s.Color = T.Divider
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s.Parent = Win
+end
+do  -- shadow
+    local sh = Instance.new("ImageLabel")
+    sh.Size  = UDim2.new(1, 80, 1, 80)
+    sh.Position = UDim2.new(0, -40, 0, -40)
+    sh.BackgroundTransparency = 1
+    sh.Image = "rbxassetid://6014261993"
+    sh.ImageColor3 = Color3.new(0,0,0)
+    sh.ImageTransparency = 0.55
+    sh.ScaleType = Enum.ScaleType.Slice
+    sh.SliceCenter = Rect.new(49,49,450,450)
+    sh.ZIndex = 0; sh.Parent = Win
+end
+
+-- ═══════════════════════════════════════════════
+--                  SIDEBAR
+-- ═══════════════════════════════════════════════
+local Sidebar = frame(UDim2.new(0, SIDE_W, 1, 0), UDim2.new(0,0,0,0), T.Sidebar, Win)
+corner(12, Sidebar)
+-- cover right side corners
+frame(UDim2.new(0, 16, 1, 0), UDim2.new(1,-16,0,0), T.Sidebar, Sidebar)
+-- right divider
+frame(UDim2.new(0,1,1,0), UDim2.new(1,0,0,0), T.Divider, Sidebar)
+
+-- Title area
+local SideTop = frame(UDim2.new(1,0,0,60), UDim2.new(0,0,0,0), T.Sidebar, Sidebar)
+
+local lTitle = label("PM HUB", 16, T.Text, Enum.Font.GothamBold, SideTop)
+lTitle.Size = UDim2.new(1,-40,0,20); lTitle.Position = UDim2.new(0,12,0,14)
+lTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local lSub = label("All In One", 10, T.Accent, Enum.Font.Gotham, SideTop)
+lSub.Size = UDim2.new(1,-16,0,14); lSub.Position = UDim2.new(0,12,0,35)
+lSub.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Minimize button
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0,22,0,22); MinBtn.Position = UDim2.new(1,-30,0,10)
+MinBtn.BackgroundColor3 = T.AccentDim; MinBtn.Text = "—"
+MinBtn.TextColor3 = T.TextDim; MinBtn.Font = Enum.Font.GothamBold
+MinBtn.TextSize = 10; MinBtn.BorderSizePixel = 0; MinBtn.Parent = SideTop
+corner(6, MinBtn)
+
+frame(UDim2.new(1,-16,0,1), UDim2.new(0,8,1,-1), T.Divider, SideTop)
+
+-- Sidebar scroll area
+local SideScroll = Instance.new("ScrollingFrame")
+SideScroll.Size     = UDim2.new(1,0,1,-62); SideScroll.Position = UDim2.new(0,0,0,62)
+SideScroll.BackgroundTransparency = 1; SideScroll.BorderSizePixel = 0
+SideScroll.ScrollBarThickness = 0; SideScroll.CanvasSize = UDim2.new(0,0,0,0)
+SideScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; SideScroll.Parent = Sidebar
+listLayout(Enum.FillDirection.Vertical, Enum.SortOrder.LayoutOrder, 0, SideScroll)
+pad(0,0,4,8, SideScroll)
+
+-- ═══════════════════════════════════════════════
+--               CONTENT PANEL
+-- ═══════════════════════════════════════════════
+local ContentPanel = frame(UDim2.new(1,-SIDE_W,1,0), UDim2.new(0,SIDE_W,0,0), T.Content, Win)
+corner(12, ContentPanel)
+frame(UDim2.new(0,16,1,0), UDim2.new(0,0,0,0), T.Content, ContentPanel) -- cover left corners
+
+-- Content title
+local ContentTitle = label("Player", 20, T.Text, Enum.Font.GothamBold, ContentPanel)
+ContentTitle.Size = UDim2.new(1,-16,0,28); ContentTitle.Position = UDim2.new(0,14,0,14)
+ContentTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Sub-tab row
+local SubRow = frame(UDim2.new(1,-14,0,28), UDim2.new(0,7,0,46), T.Content, ContentPanel)
+SubRow.BackgroundTransparency = 1
+listLayout(Enum.FillDirection.Horizontal, Enum.SortOrder.LayoutOrder, 18, SubRow)
+
+-- Sub-tab divider
+local SubDiv = frame(UDim2.new(1,-14,0,1), UDim2.new(0,7,0,74), T.Divider, ContentPanel)
+SubDiv.BackgroundTransparency = 0.3
+
+-- Content scroll
+local CScroll = Instance.new("ScrollingFrame")
+CScroll.Size   = UDim2.new(1,-6,1,-82); CScroll.Position = UDim2.new(0,3,0,80)
+CScroll.BackgroundTransparency = 1; CScroll.BorderSizePixel = 0
+CScroll.ScrollBarThickness = 2; CScroll.ScrollBarImageColor3 = T.Accent
+CScroll.CanvasSize = UDim2.new(0,0,0,0); CScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+CScroll.Parent = ContentPanel
+listLayout(Enum.FillDirection.Vertical, Enum.SortOrder.LayoutOrder, 0, CScroll)
+pad(6,6,4,10, CScroll)
+
+-- ═══════════════════════════════════════════════
+--          DRAG & MINIMIZE
+-- ═══════════════════════════════════════════════
+local dragging, dragStart, startPos
+Sidebar.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        dragging = true; dragStart = inp.Position; startPos = Win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(inp)
+    if not dragging then return end
+    if inp.UserInputType == Enum.UserInputType.MouseMovement
+    or inp.UserInputType == Enum.UserInputType.Touch then
+        local d = inp.Position - dragStart
+        Win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1
+    or inp.UserInputType == Enum.UserInputType.Touch then dragging = false end
+end)
+
+local minimized = false
+MinBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    ContentPanel.Visible = not minimized
+    tween(Win, tw(0.2, Enum.EasingStyle.Quart), {
+        Size = minimized and UDim2.new(0,SIDE_W,0,WIN_H) or UDim2.new(0,WIN_W,0,WIN_H)
+    })
+    MinBtn.Text = minimized and "▶" or "—"
+end)
+
+-- Hide/Show keybind (RightShift)
+UserInputService.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if inp.KeyCode == Enum.KeyCode.RightShift then
+        Win.Visible = not Win.Visible
+    end
+end)
+
+-- ═══════════════════════════════════════════════
+--       TAB / SUB-TAB / SECTION SYSTEM
+-- ═══════════════════════════════════════════════
+local tabs      = {}
+local activeTab = nil
+local subTabState = {}
+local sideOrder = 0
+
+-- Add sidebar category label
+local function addCategory(text)
+    sideOrder = sideOrder + 1
+    local lbl = label(text, 9, T.CatLabel, Enum.Font.GothamBold, SideScroll)
+    lbl.Size = UDim2.new(1,0,0,24); lbl.LayoutOrder = sideOrder
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    pad(14,0,0,0, lbl)
+end
+
+-- Switch active tab
+local function switchTab(name)
+    if activeTab == name then return end
+    activeTab = name
+    CScroll.CanvasPosition = Vector2.new(0,0)
+
+    -- Update sidebar buttons
+    for tname, td in pairs(tabs) do
+        local on = (tname == name)
+        tween(td.btn, tw(0.15), {
+            BackgroundColor3 = on and T.AccentDim or T.Sidebar,
+            BackgroundTransparency = on and 0 or 1,
+        })
+        td.iconLbl.TextColor3 = on and T.Accent or T.TextDim
+        td.nameLbl.TextColor3 = on and T.Text or T.TextDim
+        td.nameLbl.Font = on and Enum.Font.GothamBold or Enum.Font.Gotham
+        td.bar.Visible = on
+    end
+
+    -- Update content title
+    ContentTitle.Text = name
+    local td = tabs[name]
+    if not td then return end
+
+    -- Clear existing sub-tab buttons
+    for _, c in ipairs(SubRow:GetChildren()) do
+        if not c:IsA("UIListLayout") then c:Destroy() end
+    end
+
+    -- Hide all sections
+    for _, s in ipairs(td.allSections) do s.Visible = false end
+
+    -- Build sub-tab buttons
+    local subNames = td.subOrder
+    if #subNames <= 1 then
+        SubRow.Visible = false; SubDiv.Visible = false
+        if #subNames == 0 then
+            for _, s in ipairs(td.allSections) do s.Visible = true end
+        else
+            local secs = td.subSections[subNames[1]] or {}
+            for _, s in ipairs(secs) do s.Visible = true end
+        end
+    else
+        SubRow.Visible = true; SubDiv.Visible = true
+        local cur = subTabState[name] or subNames[1]
+        subTabState[name] = cur
+
+        for _, sname in ipairs(subNames) do
+            local isAct = (sname == cur)
+            local stBtn = Instance.new("TextButton")
+            stBtn.Text  = sname; stBtn.TextSize = 12
+            stBtn.TextColor3 = isAct and T.Text or T.TextDim
+            stBtn.Font  = isAct and Enum.Font.GothamBold or Enum.Font.Gotham
+            stBtn.BackgroundTransparency = 1; stBtn.BorderSizePixel = 0
+            stBtn.Size  = UDim2.new(0,0,1,0); stBtn.AutomaticSize = Enum.AutomaticSize.X
+            stBtn.Parent = SubRow
+
+            -- Underline
+            local ul = frame(UDim2.new(1,0,0,2), UDim2.new(0,0,1,-2), T.Accent, stBtn)
+            ul.Visible = isAct
+
+            stBtn.MouseButton1Click:Connect(function()
+                subTabState[name] = sname
+                switchTab(name)
+            end)
+        end
+
+        -- Show sections for current sub-tab
+        local secs = td.subSections[cur] or {}
+        for _, s in ipairs(secs) do s.Visible = true end
+    end
+end
+
+-- Add sidebar tab button
+local function addTab(name, icon)
+    sideOrder = sideOrder + 1
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1,0,0,36); btn.BackgroundTransparency = 1
+    btn.BackgroundColor3 = T.AccentDim; btn.Text = ""
+    btn.BorderSizePixel = 0; btn.LayoutOrder = sideOrder; btn.Parent = SideScroll
+    corner(8, btn)
+
+    -- Active bar
+    local bar = frame(UDim2.new(0,3,0,20), UDim2.new(0,0,0.5,-10), T.Accent, btn)
+    corner(2, bar); bar.Visible = false
+
+    local iconLbl = label(icon or "", 15, T.TextDim, Enum.Font.GothamBold, btn)
+    iconLbl.Size = UDim2.new(0,26,1,0); iconLbl.Position = UDim2.new(0,10,0,0)
+    iconLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local nameLbl = label(name, 12, T.TextDim, Enum.Font.Gotham, btn)
+    nameLbl.Size = UDim2.new(1,-38,1,0); nameLbl.Position = UDim2.new(0,36,0,0)
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local td = {
+        btn=btn, bar=bar, iconLbl=iconLbl, nameLbl=nameLbl,
+        allSections={}, subSections={}, subOrder={}
+    }
+    tabs[name] = td
+
+    btn.MouseButton1Click:Connect(function() switchTab(name) end)
+    btn.MouseEnter:Connect(function()
+        if activeTab ~= name then tween(btn, tw(0.1), {BackgroundColor3=Color3.fromRGB(30,30,46), BackgroundTransparency=0}) end
+    end)
+    btn.MouseLeave:Connect(function()
+        if activeTab ~= name then tween(btn, tw(0.1), {BackgroundTransparency=1}) end
+    end)
+
+    return name
+end
+
+-- Add section
+local function addSection(tabName, title, subTab)
+    local td = tabs[tabName]
+    if not td then return end
+
+    if subTab then
+        if not td.subSections[subTab] then
+            td.subSections[subTab] = {}
+            table.insert(td.subOrder, subTab)
+        end
+    end
+
+    local sec = frame(UDim2.new(1,0,0,0), nil, T.Content, CScroll)
+    sec.BackgroundTransparency = 1; sec.AutomaticSize = Enum.AutomaticSize.Y
+    sec.BorderSizePixel = 0; sec.Visible = false
+    listLayout(Enum.FillDirection.Vertical, Enum.SortOrder.LayoutOrder, 0, sec)
+
+    if title and title ~= "" then
+        local hdr = frame(UDim2.new(1,0,0,32), nil, T.Content, sec)
+        hdr.BackgroundTransparency = 1
+        local hl = label(title, 13, T.Text, Enum.Font.GothamBold, hdr)
+        hl.Size = UDim2.new(1,-10,1,0); hl.Position = UDim2.new(0,6,0,0)
+        hl.TextXAlignment = Enum.TextXAlignment.Left
+    end
+
+    -- Thin divider at bottom of section
+    local sdiv = frame(UDim2.new(1,-10,0,1), UDim2.new(0,5,0,0), T.Divider, sec)
+    sdiv.BackgroundTransparency = 0.5
+
+    table.insert(td.allSections, sec)
+    if subTab and td.subSections[subTab] then
+        table.insert(td.subSections[subTab], sec)
+    end
+    return sec
+end
+
+-- ═══════════════════════════════════════════════
+--          UI COMPONENTS
+-- ═══════════════════════════════════════════════
+local toggleRefs = {}
+
+-- ── TOGGLE ──────────────────────────────────────
+local function addToggle(parent, key, text, callback)
+    local row = frame(UDim2.new(1,0,0,38), nil, T.Content, parent)
+    row.BackgroundTransparency = 1
+
+    local lbl = label(text, 12, T.TextDim, Enum.Font.Gotham, row)
+    lbl.Size = UDim2.new(1,-58,1,0); lbl.Position = UDim2.new(0,8,0,0)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local pill = frame(UDim2.new(0,44,0,24), UDim2.new(1,-52,0.5,-12), T.ToggleOFF, row)
+    corner(12, pill)
+    local knob = frame(UDim2.new(0,18,0,18), UDim2.new(0,3,0.5,-9), T.KnobColor, pill)
+    corner(9, knob)
+
+    local sep = frame(UDim2.new(1,-12,0,1), UDim2.new(0,6,1,-1), T.Divider, row)
+    sep.BackgroundTransparency = 0.5
+
+    local function refresh()
+        local on = S[key]
+        tween(pill, tw(0.2), {BackgroundColor3 = on and T.ToggleON or T.ToggleOFF})
+        tween(knob, tw(0.2), {Position = on and UDim2.new(1,-21,0.5,-9) or UDim2.new(0,3,0.5,-9)})
+        lbl.TextColor3 = on and T.Text or T.TextDim
+    end
+    if S[key] ~= nil then refresh() end
+
+    local click = Instance.new("TextButton")
+    click.Size = UDim2.new(1,0,1,0); click.BackgroundTransparency = 1
+    click.Text = ""; click.Parent = row
+    click.MouseButton1Click:Connect(function()
+        S[key] = not S[key]; refresh()
+        if callback then callback(S[key]) end
+    end)
+    click.MouseEnter:Connect(function() lbl.TextColor3 = T.Text end)
+    click.MouseLeave:Connect(function() lbl.TextColor3 = S[key] and T.Text or T.TextDim end)
+
+    toggleRefs[key] = {pill=pill, knob=knob, lbl=lbl, refresh=refresh}
+    return row
+end
+
+-- ── SLIDER ───────────────────────────────────────
+local function addSlider(parent, text, key, min, max, step)
+    step = step or 1
+    local row = frame(UDim2.new(1,0,0,56), nil, T.Content, parent)
+    row.BackgroundTransparency = 1
+
+    local lbl = label(text, 12, T.TextDim, Enum.Font.Gotham, row)
+    lbl.Size = UDim2.new(0.68,0,0,26); lbl.Position = UDim2.new(0,8,0,4)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local valLbl = label(tostring(S[key] or min), 12, T.Accent, Enum.Font.GothamBold, row)
+    valLbl.Size = UDim2.new(0.28,0,0,26); valLbl.Position = UDim2.new(0.7,0,0,4)
+    valLbl.TextXAlignment = Enum.TextXAlignment.Right
+
+    local track = frame(UDim2.new(1,-16,0,5), UDim2.new(0,8,0,38), T.SliderBg, row)
+    corner(3, track)
+    local fill = frame(UDim2.new(0,0,1,0), UDim2.new(0,0,0,0), T.SliderFill, track)
+    corner(3, fill)
+
+    local sep = frame(UDim2.new(1,-12,0,1), UDim2.new(0,6,1,-1), T.Divider, row)
+    sep.BackgroundTransparency = 0.5
+
+    local function setVal(v)
+        v = math.clamp(math.round(v / step) * step, min, max)
+        S[key] = v; valLbl.Text = tostring(v)
+        fill.Size = UDim2.new(math.clamp((v-min)/(max-min+0.0001),0,1), 0, 1, 0)
+    end
+    setVal(S[key] or min)
+
+    local sliding = false
+    track.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            sliding = true
+            local rel = math.clamp((inp.Position.X-track.AbsolutePosition.X)/track.AbsoluteSize.X,0,1)
+            setVal(min+(max-min)*rel)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.Touch then sliding = false end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if not sliding then return end
+        if inp.UserInputType == Enum.UserInputType.MouseMovement
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            local rel = math.clamp((inp.Position.X-track.AbsolutePosition.X)/track.AbsoluteSize.X,0,1)
+            setVal(min+(max-min)*rel)
+        end
+    end)
+    return row
+end
+
+-- ── DROPDOWN ─────────────────────────────────────
+local function addDropdown(parent, text, key, options)
+    local row = frame(UDim2.new(1,0,0,40), nil, T.Content, parent)
+    row.BackgroundTransparency = 1
+
+    local lbl = label(text, 12, T.TextDim, Enum.Font.Gotham, row)
+    lbl.Size = UDim2.new(0.5,0,1,0); lbl.Position = UDim2.new(0,8,0,0)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local curIdx = 1
+    for i,v in ipairs(options) do if v == S[key] then curIdx=i; break end end
+
+    local dropBtn = Instance.new("TextButton")
+    dropBtn.Size = UDim2.new(0.44,0,0,26); dropBtn.Position = UDim2.new(0.54,0,0.5,-13)
+    dropBtn.BackgroundColor3 = T.DropBg; dropBtn.Text = tostring(S[key] or options[1])
+    dropBtn.TextColor3 = T.Text; dropBtn.Font = Enum.Font.Gotham
+    dropBtn.TextSize = 11; dropBtn.BorderSizePixel = 0; dropBtn.Parent = row
+    corner(6, dropBtn)
+
+    dropBtn.MouseButton1Click:Connect(function()
+        curIdx = (curIdx % #options) + 1
+        S[key] = options[curIdx]; dropBtn.Text = tostring(S[key])
+    end)
+    dropBtn.MouseEnter:Connect(function() tween(dropBtn, tw(0.1), {BackgroundColor3=Color3.fromRGB(50,50,72)}) end)
+    dropBtn.MouseLeave:Connect(function() tween(dropBtn, tw(0.1), {BackgroundColor3=T.DropBg}) end)
+
+    local sep = frame(UDim2.new(1,-12,0,1), UDim2.new(0,6,1,-1), T.Divider, row)
+    sep.BackgroundTransparency = 0.5
+    return row
+end
+
+-- ── BUTTON ───────────────────────────────────────
+local function addButton(parent, text, col, callback)
+    if type(col) == "function" then callback=col; col=T.BtnBg end
+    col = col or T.BtnBg
+    local wrap = frame(UDim2.new(1,0,0,44), nil, T.Content, parent)
+    wrap.BackgroundTransparency = 1
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1,-12,0,32); btn.Position = UDim2.new(0,6,0.5,-16)
+    btn.BackgroundColor3 = col; btn.Text = text
+    btn.TextColor3 = T.Text; btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 12; btn.BorderSizePixel = 0; btn.Parent = wrap
+    corner(7, btn)
+
+    btn.MouseButton1Click:Connect(callback)
+    btn.MouseEnter:Connect(function() tween(btn, tw(0.12), {BackgroundColor3=T.AccentHover}) end)
+    btn.MouseLeave:Connect(function() tween(btn, tw(0.12), {BackgroundColor3=col}) end)
+    return wrap
+end
+
+-- ── INFO ROW ─────────────────────────────────────
+local function addInfo(parent, leftText, rightText)
+    local row = frame(UDim2.new(1,0,0,30), nil, T.Content, parent)
+    row.BackgroundTransparency = 1
+    local l = label(leftText, 11, T.TextDim, Enum.Font.Gotham, row)
+    l.Size = UDim2.new(0.55,0,1,0); l.Position = UDim2.new(0,8,0,0)
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    local r = label(rightText, 11, T.Accent, Enum.Font.GothamBold, row)
+    r.Size = UDim2.new(0.4,0,1,0); r.Position = UDim2.new(0.58,0,0,0)
+    r.TextXAlignment = Enum.TextXAlignment.Right
+    return row
+end
+
+-- ═══════════════════════════════════════════════
+--           BUILD SIDEBAR TABS
+-- ═══════════════════════════════════════════════
+-- COMMON
+addCategory("COMMON")
+addTab("Player",  "👤")
+addTab("Combat",  "👊")
+-- MAIN
+addCategory("MAIN")
+addTab("Parry",   "🛡")
+-- VISUALS
+addCategory("VISUALS")
+addTab("Sounds",  "🔊")
+addTab("Visuals", "👁")
+-- GLOBAL
+addCategory("GLOBAL")
+addTab("Utility", "🔧")
+addTab("Misc",    "⚙")
+addTab("Farming", "🌾")
+addTab("AntiBan", "🚫")
+addTab("Settings","⚙")
+addTab("UI",      "🖥")
+
+-- ═══════════════════════════════════════════════
+--           PLAYER TAB
+-- ═══════════════════════════════════════════════
+local sp_move = addSection("Player", "Movement", "Player")
+addSlider(sp_move, "Walkspeed",          "WalkSpeed", 16, 200, 1)
+addToggle(sp_move, "Speed",   "Speed Hack", function(on)
+    if not on and Hum and Hum.Parent then Hum.WalkSpeed = 16 end
+end)
+addSlider(sp_move, "Fly Speed",          "FlySpeed",  1,  200, 1)
+addToggle(sp_move, "Fly",     "Fly", function(on)
+    if not on then
+        if _flyBV then pcall(function() _flyBV:Destroy() end); _flyBV=nil end
+        if _flyBG then pcall(function() _flyBG:Destroy() end); _flyBG=nil end
+        if Hum and Hum.Parent then Hum.PlatformStand = false end
+    end
+end)
+addSlider(sp_move, "Jump Height",        "JumpHeight", 50, 500, 10)
+addToggle(sp_move, "SuperJump", "Super Jump", function(on)
+    if not on and Hum and Hum.Parent then
+        Hum.JumpHeight = 7.2
+        if Hum.UseJumpPower then Hum.JumpPower = 7.2 end
+    end
+end)
+addToggle(sp_move, "NoDashCD",  "No Dash Cooldown")
+addToggle(sp_move, "NoJumpCD",  "No Jump Cooldown")
+addToggle(sp_move, "WalkOnWater","Walk on Water")
+
+local sp_blat = addSection("Player", "Blatant", "Player")
+addToggle(sp_blat, "NoRagdoll",   "No Ragdoll")
+addToggle(sp_blat, "NoParryStun", "No Parry Stun")
+addToggle(sp_blat, "NoExpKB",     "No Explosive Knockbacks")
+addToggle(sp_blat, "NoFallDmg",   "No Fall Damage")
+
+local sp_help = addSection("Player", "Helper", "Player")
+addButton(sp_help, "Unlock All Emotes", T.BtnSafe, function()
+    pcall(function()
+        local es = game:GetService("EmotesService")
+        if es and es.UnlockAllEmotes then es:UnlockAllEmotes() end
+    end)
+    -- Fallback: set emotes attribute
+    pcall(function()
+        if LP.Character then
+            LP.Character:SetAttribute("UnlockedEmotes", true)
+        end
+    end)
+end)
+addToggle(sp_help, "InfStamina",  "Infinite Stamina", function(on)
+    if not on then _staminaThread = nil end
+end)
+addToggle(sp_help, "AutoRespawn", "Auto Respawn")
+
+-- ═══════════════════════════════════════════════
+--           COMBAT TAB
+-- ═══════════════════════════════════════════════
+local sc_hb = addSection("Combat", "Hitboxs", "Features")
+addSlider(sc_hb, "Torso Hitbox Size", "TorsoSize", 1, 20, 1)
+addToggle(sc_hb, "TorsoHB", "Torso Expander")
+
+local sc_mel = addSection("Combat", "Melee Extender", "Features")
+addSlider(sc_mel, "Weapon Hitbox Size", "MeleeSize", 1, 20, 1)
+addToggle(sc_mel, "ShowDmgPts", "Show Dmg Points")
+addToggle(sc_mel, "MeleeExt",   "Melee Extender")
+
+local sc_atk = addSection("Combat", "Attack", "Features")
+addDropdown(sc_atk, "Kill Aura Method", "KillMethod", {"VIM","Remote"})
+addSlider(sc_atk, "Kill Aura Distance", "KillAuraDist", 1, 30, 1)
+addToggle(sc_atk, "KillAura", "Kill Aura")
+
+-- ═══════════════════════════════════════════════
+--           PARRY TAB
+-- ═══════════════════════════════════════════════
+-- Features sub-tab
+local sp_feat = addSection("Parry", "", "Features")
+addToggle(sp_feat, "Parry",           "Auto Parry")
+addToggle(sp_feat, "ParryInvis",      "Parry Invisible")
+addToggle(sp_feat, "AutoParryToggler","Auto Parry Toggler")
+addSlider(sp_feat, "Parry Timing",    "ParryTiming",  0.05, 2,   0.05)
+addSlider(sp_feat, "Parry Distance",  "ParryDist",    1,    50,  1)
+addSlider(sp_feat, "Parry Chance",    "ParryChance",  1,    100, 1)
+addSlider(sp_feat, "Parry Cooldown",  "ParryCooldown",0,    5,   0.1)
+
+local sp_auto = addSection("Parry", "Auto Parry", "Features")
+addDropdown(sp_auto, "Parry Detections", "ParryDetect", {"Animation, Sound","Animation","Sound"})
+addDropdown(sp_auto, "Parry Methods",    "ParryMethod", {"Module","Remote","VIM"})
+
+-- Configurations sub-tab
+local sp_cfg = addSection("Parry", "Configuration", "Configurations")
+addInfo(sp_cfg,   "Parry Distance", "18")
+addInfo(sp_cfg,   "Parry Chance",   "100%")
+addButton(sp_cfg, "Reset to Default", T.BtnBg, function()
+    S.ParryDist=18; S.ParryChance=100; S.ParryTiming=0.3; S.ParryCooldown=0
+end)
+addButton(sp_cfg, "Apply Settings", T.BtnSafe, function()
+    warn("[PM HUB] Parry config applied")
+end)
+
+-- ═══════════════════════════════════════════════
+--           SOUNDS TAB
+-- ═══════════════════════════════════════════════
+local ss_snd = addSection("Sounds", "Custom Sounds", nil)
+addToggle(ss_snd, "CustomSounds", "Custom Sounds")
+addSlider(ss_snd, "Volume", "Volume", 0, 100, 1)
+
+addButton(ss_snd, "Test Kill Sound", T.BtnBg, function()
+    pcall(function()
+        local snd = Instance.new("Sound")
+        snd.SoundId = "rbxassetid://6518811702"
+        snd.Volume  = S.Volume / 100
+        snd.Parent  = SoundService
+        snd:Play()
+        game:GetService("Debris"):AddItem(snd, 5)
+    end)
+end)
+addButton(ss_snd, "Test Parry Sound", T.BtnBg, function()
+    pcall(function()
+        local snd = Instance.new("Sound")
+        snd.SoundId = "rbxassetid://5869042148"
+        snd.Volume  = S.Volume / 100
+        snd.Parent  = SoundService
+        snd:Play()
+        game:GetService("Debris"):AddItem(snd, 5)
+    end)
+end)
+
+-- ═══════════════════════════════════════════════
+--           VISUALS TAB
+-- ═══════════════════════════════════════════════
+local sv_esp = addSection("Visuals", "ESP Settings", "Visuals")
+addToggle(sv_esp, "ESP",      "Player ESP")
+addToggle(sv_esp, "Chams",    "Chams (Wallhack)")
+
+local sv_box = addSection("Visuals", "Boxes", "Visuals")
+addToggle(sv_box, "CornerBox","Corner Box")
+
+local sv_hp  = addSection("Visuals", "Healthbar", "Visuals")
+addToggle(sv_hp, "ShowHpBar", "Show Healthbar")
+
+local sv_nam = addSection("Visuals", "Names & Distances", "Visuals")
+addToggle(sv_nam, "ShowNames","Show Names")
+addToggle(sv_nam, "ShowDist", "Show Distances")
+
+-- ═══════════════════════════════════════════════
+--           UTILITY TAB
+-- ═══════════════════════════════════════════════
+local su_inst = addSection("Utility", "Instant Stuff", nil)
+addToggle(su_inst, "InstantC4",    "Instant C4")
+addToggle(su_inst, "InstantThrow", "Instant Throw")
+addToggle(su_inst, "InstantUse",   "Instant Use")
+
+local su_auto = addSection("Utility", "Auto Stuff", nil)
+addToggle(su_auto, "NoUtilDmg",   "No Utility Damage")
+addToggle(su_auto, "AutoBearTrap","Auto Place BearTrap")
+addToggle(su_auto, "AutoClaymore","Auto Place Claymore")
+
+-- ═══════════════════════════════════════════════
+--           MISC TAB
+-- ═══════════════════════════════════════════════
+local sm_misc = addSection("Misc", "Miscellaneous", "Misc")
+addToggle(sm_misc, "FakeSwing", "Fake Swing")
+
+local sm_game = addSection("Misc", "Game", "Misc")
+addToggle(sm_game, "NoEffects", "No Effects")
+addButton(sm_game, "Quick Server Hop", T.BtnBg, function()
+    pcall(function()
+        local tps = game:GetService("TeleportService")
+        tps:Teleport(game.PlaceId, LP)
+    end)
+end)
+
+-- ═══════════════════════════════════════════════
+--           FARMING TAB
+-- ═══════════════════════════════════════════════
+local sf_farm = addSection("Farming", "Player Farmer", nil)
+addToggle(sf_farm, "Autofarm",      "Enable Autofarm", function(on)
+    if not on then _farmThread = nil end
+end)
+addSlider(sf_farm, "Farm Distance",   "FarmDist",      5,  150, 1)
+addSlider(sf_farm, "Tween Speed",     "TweenSpeed",    5,  200, 5)
+addToggle(sf_farm, "MoveBehind",      "Be Behind")
+addSlider(sf_farm, "Health To Move At","HealthMoveAt", 0,  100, 1)
+addToggle(sf_farm, "MoveIfLow",       "Move Away If Low HP")
+addToggle(sf_farm, "MoveIfParried",   "Move Away If Parried")
+addSlider(sf_farm, "Health To Reset", "HealthResetAt", 0,  100, 1)
+
+local sf_bub = addSection("Farming", "Farming Bubble", nil)
+addToggle(sf_bub, "FarmBubble", "Detecting Bubble")
+
+-- ═══════════════════════════════════════════════
+--           ANTI-BAN TAB
+-- ═══════════════════════════════════════════════
+local sa_chat = addSection("AntiBan", "Chat Detector", nil)
+addToggle(sa_chat, "ChatHop",       "ServerHop If Detected")
+addToggle(sa_chat, "ChatShowWords", "Show Detected Words")
+
+local sa_panic = addSection("AntiBan", "Panic", nil)
+addButton(sa_panic, "⚠  ServerHop Now", T.BtnBg, function()
+    pcall(function()
+        game:GetService("TeleportService"):Teleport(game.PlaceId, LP)
+    end)
+end)
+
+-- ═══════════════════════════════════════════════
+--           SETTINGS TAB
+-- ═══════════════════════════════════════════════
+local se_info = addSection("Settings", "Build Info", nil)
+addInfo(se_info, "RE Source",   "MaxHub Sample 5")
+addInfo(se_info, "Build",       "Final")
+addInfo(se_info, "Game",        "Project Mugetsu")
+addInfo(se_info, "Executor",    "Delta")
+
+local se_cfg = addSection("Settings", "Configuration", nil)
+addButton(se_cfg, "Reset All Settings", T.BtnDanger, function()
+    S.Speed=false; S.WalkSpeed=17; S.Fly=false; S.FlySpeed=50
+    S.SuperJump=false; S.JumpHeight=150; S.NoDashCD=false; S.NoJumpCD=false
+    S.WalkOnWater=false; S.NoRagdoll=false; S.NoParryStun=false
+    S.NoExpKB=false; S.NoFallDmg=false; S.InfStamina=false; S.AutoRespawn=false
+    S.TorsoHB=false; S.TorsoSize=6; S.MeleeExt=false; S.MeleeSize=7
+    S.KillAura=false; S.KillAuraDist=6; S.Parry=false
+    S.ParryDist=18; S.ParryChance=100; S.ParryTiming=0.3
+    S.ESP=false; S.Chams=false; S.Autofarm=false
+    _staminaThread=nil; _farmThread=nil
+    for _, ref in pairs(toggleRefs) do pcall(ref.refresh) end
+    if Hum and Hum.Parent then
+        Hum.WalkSpeed=16; Hum.JumpHeight=7.2; Hum.PlatformStand=false
+    end
+    if _flyBV then pcall(function() _flyBV:Destroy() end); _flyBV=nil end
+    if _flyBG then pcall(function() _flyBG:Destroy() end); _flyBG=nil end
+    warn("[PM HUB] Semua setting di-reset")
+end)
+addButton(se_cfg, "Apply & Save Settings", T.BtnSafe, function()
+    warn("[PM HUB] Settings applied")
+end)
+
+-- ═══════════════════════════════════════════════
+--           UI TAB
+-- ═══════════════════════════════════════════════
+local su_ui = addSection("UI", "Interface", nil)
+addToggle(su_ui, "AggressiveMouse", "Aggressive Mouse Unlock", function(on)
+    if on then
+        pcall(function() game:GetService("UserInputService").MouseBehavior = Enum.MouseBehavior.Default end)
+        pcall(function() StarterGui:SetCore("TopbarEnabled", true) end)
+    end
+end)
+addInfo(su_ui, "Hide UI Toggle", "RightShift")
+
+addButton(su_ui, "Hide UI  (RightShift)", T.BtnBg, function()
+    Win.Visible = not Win.Visible
+end)
+addButton(su_ui, "⚠  Destroy UI", T.BtnDanger, function()
+    ScreenGui:Destroy()
+end)
+
+-- ═══════════════════════════════════════════════
+--       PANIC — disable all (alias in Settings)
+-- ═══════════════════════════════════════════════
+local function panicAll()
+    for k in pairs(S) do if type(S[k])=="boolean" then S[k]=false end end
+    _staminaThread=nil; _farmThread=nil
+    if _flyBV then pcall(function() _flyBV:Destroy() end); _flyBV=nil end
+    if _flyBG then pcall(function() _flyBG:Destroy() end); _flyBG=nil end
+    for _, ref in pairs(toggleRefs) do pcall(ref.refresh) end
+    if Hum and Hum.Parent then
+        Hum.PlatformStand=false; Hum.WalkSpeed=16; Hum.JumpHeight=7.2
+    end
+    for _, v in pairs(Workspace:GetDescendants()) do
+        if v:IsA("SelectionBox") and v.Name=="PMCHAMS" then pcall(function() v:Destroy() end) end
+    end
+    warn("[PM HUB] ⚠ Semua fitur dimatikan (PANIC)")
+end
+addButton(se_cfg, "⚠  PANIC — Matikan Semua", T.BtnDanger, panicAll)
+
+-- ── SHOW DEFAULT TAB ────────────────────────────
+tabs["Player"].bar.Visible         = true
+tabs["Player"].nameLbl.Font        = Enum.Font.GothamBold
+tabs["Player"].nameLbl.TextColor3  = T.Text
+tabs["Player"].iconLbl.TextColor3  = T.Accent
+tween(tabs["Player"].btn, tw(), {BackgroundColor3=T.AccentDim, BackgroundTransparency=0})
+activeTab = "Player"
+switchTab("Player")
+
+-- ═══════════════════════════════════════════════
+--              LOGIC — PARRY
+-- ═══════════════════════════════════════════════
+local _parryRemote, _lastParry, _parryFired = nil, 0, false
+
+local function _findRemote(keywords)
+    for _, v in pairs(game:GetDescendants()) do
+        if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
+            local n = v.Name:lower()
+            for _, kw in ipairs(keywords) do
+                if n:find(kw) then return v end
+            end
+        end
+    end
+end
+
+local function _doParry()
+    if _parryRemote then
+        pcall(function()
+            if _parryRemote:IsA("RemoteEvent") then _parryRemote:FireServer()
+            else _parryRemote:InvokeServer() end
+        end)
+    else
+        local ok, VIM = pcall(function() return game:GetService("VirtualInputManager") end)
+        if ok and VIM then
+            pcall(function()
+                VIM:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+                task.delay(0.05, function()
+                    pcall(function() VIM:SendKeyEvent(false, Enum.KeyCode.Q, false, game) end)
+                end)
+            end)
+        end
+    end
+end
+
+local function _tryParry()
+    if not S.Parry then return end
+    local now = tick()
+    if (now - _lastParry) < math.max(S.ParryCooldown, 0.08) then return end
+    if _parryFired then return end
+    if math.random(1,100) > S.ParryChance then return end
+    _parryFired = true; _lastParry = now
+    task.delay(S.ParryTiming * 0.5, function()
+        _doParry()
+        task.delay(S.ParryTiming, function() _parryFired = false end)
+    end)
+end
+
+local _ATTACK_KEYS = {"attack","combo","swing","slash","punch","strike","hit","melee","ability"}
+local function _isAttackAnim(n)
+    n = n:lower()
+    for _, k in ipairs(_ATTACK_KEYS) do if n:find(k) then return true end end
+    return false
+end
+
+local function _watchPlayer(player)
+    if player == LP then return end
+    local function onChar(c)
+        local h  = c:WaitForChild("Humanoid", 6)
+        local rp = c:WaitForChild("HumanoidRootPart", 6)
+        if not h or not rp then return end
+        h.AnimationPlayed:Connect(function(track)
+            if not S.Parry then return end
+            if (HRP.Position - rp.Position).Magnitude > S.ParryDist then return end
+            if S.ParryDetect:find("Animation") and _isAttackAnim(track.Name) then _tryParry() end
+        end)
+        local function hookSnd(s)
+            if not s:IsA("Sound") then return end
+            s.Played:Connect(function()
+                if not S.Parry then return end
+                if not S.ParryDetect:find("Sound") then return end
+                if (HRP.Position - rp.Position).Magnitude > S.ParryDist then return end
+                local n = s.Name:lower()
+                if n:find("attack") or n:find("swing") or n:find("hit") then _tryParry() end
+            end)
+        end
+        for _, v in pairs(c:GetDescendants()) do hookSnd(v) end
+        c.DescendantAdded:Connect(hookSnd)
+    end
+    if player.Character then task.spawn(onChar, player.Character) end
+    player.CharacterAdded:Connect(function(c) task.spawn(onChar, c) end)
+end
+
+_parryRemote = _findRemote({"parry","block"})
+for _, p in pairs(Players:GetPlayers()) do _watchPlayer(p) end
+Players.PlayerAdded:Connect(_watchPlayer)
+
+-- ═══════════════════════════════════════════════
+--              LOGIC — COMBAT
+-- ═══════════════════════════════════════════════
+local _attackRemote = _findRemote({"useactorabili","combohit","dealdam","attackhit","meleeattack"})
+local _lastKillAura = 0
+local _origSizes    = {}
+
+local function _expandTorso(c, sz)
+    local p = c:FindFirstChild("HumanoidRootPart"); if not p then return end
+    local id = tostring(c)
+    if not _origSizes[id] then _origSizes[id] = p.Size end
+    p.Size=Vector3.new(sz,sz,sz); p.Transparency=0.95; p.CanCollide=false
+end
+local function _restoreTorso(c)
+    local p = c:FindFirstChild("HumanoidRootPart"); if not p then return end
+    local id = tostring(c)
+    if _origSizes[id] then p.Size=_origSizes[id]; _origSizes[id]=nil end
+end
+local function _getEnemies()
+    local list={}
+    for _, pl in pairs(Players:GetPlayers()) do
+        if pl==LP then continue end
+        local c=pl.Character; if not c then continue end
+        local h=c:FindFirstChild("Humanoid"); local r=c:FindFirstChild("HumanoidRootPart")
+        if not h or not r or h.Health<=0 then continue end
+        local d=(HRP.Position-r.Position).Magnitude
+        if d<=S.KillAuraDist then table.insert(list,{c=c,hrp=r,dist=d,pl=pl}) end
+    end
+    table.sort(list,function(a,b) return a.dist<b.dist end)
+    return list
+end
+
+-- ═══════════════════════════════════════════════
+--              LOGIC — FLY
+-- ═══════════════════════════════════════════════
+local function _enableFly()
+    if not Hum or not HRP then return end
+    Hum.PlatformStand = true
+    if not _flyBV then
+        _flyBV=Instance.new("BodyVelocity"); _flyBV.MaxForce=Vector3.new(1e9,1e9,1e9)
+        _flyBV.P=9999; _flyBV.Velocity=Vector3.zero; _flyBV.Parent=HRP
+    end
+    if not _flyBG then
+        _flyBG=Instance.new("BodyGyro"); _flyBG.MaxTorque=Vector3.new(1e9,1e9,1e9)
+        _flyBG.P=9999; _flyBG.D=100; _flyBG.CFrame=HRP.CFrame; _flyBG.Parent=HRP
+    end
+end
+local function _disableFly()
+    if Hum and Hum.Parent then Hum.PlatformStand=false end
+    if _flyBV then pcall(function() _flyBV:Destroy() end); _flyBV=nil end
+    if _flyBG then pcall(function() _flyBG:Destroy() end); _flyBG=nil end
+end
+
+-- ═══════════════════════════════════════════════
+--              LOGIC — STAMINA
+-- ═══════════════════════════════════════════════
+local _STAMINA_KEYS = {"Stamina","stamina","SP","Energy","energy","Reiatsu","CursedEnergy","Reiryoku","SpiritualPressure","Reiatsu"}
+local function _startStamina()
+    if _staminaThread then return end
+    local th={}; _staminaThread=th
+    task.spawn(function()
+        while _staminaThread==th and S.InfStamina do
+            if Char and Char.Parent then
+                for _,k in ipairs(_STAMINA_KEYS) do
+                    pcall(function()
+                        if type(Char:GetAttribute(k))=="number" then Char:SetAttribute(k,999999) end
+                        if Hum and Hum.Parent and type(Hum:GetAttribute(k))=="number" then Hum:SetAttribute(k,999999) end
+                    end)
+                end
+            end
+            task.wait(0.05)
+        end
+        if _staminaThread==th then _staminaThread=nil end
+    end)
+end
+
+-- ═══════════════════════════════════════════════
+--              LOGIC — FALL DMG / RESPAWN
+-- ═══════════════════════════════════════════════
+_setupFallDmg = function()
+    if _fallConn then pcall(function() _fallConn:Disconnect() end) end
+    if not Hum or not Hum.Parent then return end
+    _fallConn = Hum.HealthChanged:Connect(function()
+        if S.NoFallDmg and Hum and Hum.Parent then
+            task.defer(function()
+                if S.NoFallDmg and Hum and Hum.Parent then Hum.Health=Hum.MaxHealth end
+            end)
+        end
+    end)
+end
+_setupAutoRespawn = function()
+    if _autoRespawnConn then pcall(function() _autoRespawnConn:Disconnect() end) end
+    if not Hum or not Hum.Parent then return end
+    _autoRespawnConn = Hum.Died:Connect(function()
+        if S.AutoRespawn then task.delay(1.5, function() pcall(function() LP:LoadCharacter() end) end) end
+    end)
+end
+_setupFallDmg(); _setupAutoRespawn()
+
+-- ═══════════════════════════════════════════════
+--              LOGIC — CHAT DETECTOR
+-- ═══════════════════════════════════════════════
+local _banWords = {"hack","cheat","exploit","script","executor","ban","report","pmhub","maxhub"}
+game:GetService("Players").PlayerAdded:Connect(function(p)
+    p.Chatted:Connect(function(msg)
+        if not S.ChatHop then return end
+        local m = msg:lower()
+        for _, word in ipairs(_banWords) do
+            if m:find(word) then
+                if S.ChatShowWords then warn("[PM HUB] Kata terdeteksi: "..word.." dari "..p.Name) end
+                task.delay(0.5, function()
+                    pcall(function() game:GetService("TeleportService"):Teleport(game.PlaceId, LP) end)
+                end)
+                return
+            end
+        end
+    end)
+end)
+
+-- ═══════════════════════════════════════════════
+--              LOGIC — ESP
+-- ═══════════════════════════════════════════════
+local _espObjs={}, _chamObjs={}
+
+local function _makeESP(pl)
+    if pl==LP or _espObjs[pl.UserId] then return end
+    local function txt(col)
+        local t=Drawing.new("Text"); t.Visible=false; t.Center=true
+        t.Outline=true; t.OutlineColor=Color3.new(0,0,0)
+        t.Size=13; t.Font=Drawing.Fonts.Plex; t.Color=col or Color3.new(1,1,1); return t
+    end
+    local function ln(col,th)
+        local l=Drawing.new("Line"); l.Visible=false; l.Thickness=th or 1.5
+        l.Color=col or Color3.fromRGB(255,60,60); return l
+    end
+    local o={name=txt(),dist=txt(Color3.fromRGB(180,180,180)),
+             hpTxt=txt(Color3.fromRGB(100,255,100)),
+             hpBg=ln(Color3.fromRGB(30,30,30),3),hpBar=ln(Color3.fromRGB(100,255,100),3),boxes={}}
+    for _=1,8 do table.insert(o.boxes,ln(Color3.fromRGB(61,99,254),1.5)) end
+    _espObjs[pl.UserId]=o
+end
+local function _removeESP(pl)
+    local o=_espObjs[pl.UserId]; if not o then return end
+    for _,v in pairs(o) do
+        if type(v)=="table" then for _,l in pairs(v) do pcall(function() l:Remove() end) end
+        else pcall(function() v:Remove() end) end
+    end
+    _espObjs[pl.UserId]=nil
+end
+local function _hideESP(o)
+    if not o then return end
+    for _,v in pairs(o) do
+        if type(v)=="table" then for _,l in pairs(v) do pcall(function() if l.Visible~=nil then l.Visible=false end end) end
+        else pcall(function() if v.Visible~=nil then v.Visible=false end end) end
+    end
+end
+local function _drawCornerBox(lines, hs, fs)
+    local bw=(fs-hs).Magnitude*0.45; local cw=bw*0.3; local ch=(fs.Y-hs.Y)*0.25
+    local tl=Vector2.new(hs.X-bw,hs.Y); local tr=Vector2.new(hs.X+bw,hs.Y)
+    local bl=Vector2.new(fs.X-bw,fs.Y); local br=Vector2.new(fs.X+bw,fs.Y)
+    local pts={tl,tl+Vector2.new(cw,0),tl,tl+Vector2.new(0,ch),
+               tr,tr-Vector2.new(cw,0),tr,tr+Vector2.new(0,ch),
+               bl,bl+Vector2.new(cw,0),bl,bl-Vector2.new(0,ch),
+               br,br-Vector2.new(cw,0),br,br-Vector2.new(0,ch)}
+    for i=1,8 do lines[i].From=pts[i*2-1]; lines[i].To=pts[i*2]; lines[i].Visible=true end
+end
+local function _updateChams(pl)
+    local id=pl.UserId
+    if not S.Chams then
+        if _chamObjs[id] then pcall(function() _chamObjs[id]:Destroy() end); _chamObjs[id]=nil end
+        return
+    end
+    local c=pl.Character; if not c then return end
+    if not _chamObjs[id] then
+        local h=Instance.new("SelectionBox"); h.Name="PMCHAMS"
+        h.SurfaceTransparency=0.7; h.LineThickness=0.04
+        h.Color3=Color3.fromRGB(61,99,254); h.SurfaceColor3=Color3.fromRGB(61,99,254)
+        h.Adornee=c; h.Parent=Workspace; _chamObjs[id]=h
+    end
+end
+
+for _,p in pairs(Players:GetPlayers()) do _makeESP(p) end
+Players.PlayerAdded:Connect(_makeESP)
+Players.PlayerRemoving:Connect(function(p)
+    _removeESP(p)
+    if _chamObjs[p.UserId] then pcall(function() _chamObjs[p.UserId]:Destroy() end); _chamObjs[p.UserId]=nil end
+end)
+
+-- ═══════════════════════════════════════════════
+--              LOGIC — AUTOFARM
+-- ═══════════════════════════════════════════════
+local function _startAutofarm()
+    if _farmThread then return end
+    local th={}; _farmThread=th
+    task.spawn(function()
+        while _farmThread==th and S.Autofarm do
+            if not Hum or not Hum.Parent or Hum.Health<=0 then task.wait(1); continue end
+            if S.HealthResetAt>0 and (Hum.Health/Hum.MaxHealth*100) <= S.HealthResetAt then
+                pcall(function() LP:LoadCharacter() end)
+                task.wait(3); continue
+            end
+            local enemies=_getEnemies()
+            if S.KillAuraDist < S.FarmDist then
+                -- expand search for farm
+                local tempOld=S.KillAuraDist; S.KillAuraDist=S.FarmDist
+                enemies=_getEnemies(); S.KillAuraDist=tempOld
+            end
+            if #enemies>0 then
+                local target=enemies[1]
+                local hp=(Hum.Health/Hum.MaxHealth*100)
+                if S.MoveIfLow and hp<=S.HealthMoveAt then
+                    -- Move away
+                    local away=(HRP.Position-target.hrp.Position).Unit*20
+                    local newCF=CFrame.new(HRP.Position+away)
+                    HRP.CFrame=newCF
+                else
+                    -- Move toward target
+                    local offset = S.MoveBehind and -target.hrp.CFrame.LookVector*3 or Vector3.new(0,0,0)
+                    local dest=target.hrp.Position+offset+Vector3.new(0,0,3)
+                    if (HRP.Position-dest).Magnitude > 5 then
+                        local tinfo=TweenInfo.new(math.max(0.1,(HRP.Position-dest).Magnitude/S.TweenSpeed))
+                        TweenService:Create(HRP, tinfo, {CFrame=CFrame.new(dest, target.hrp.Position)}):Play()
+                        task.wait(tinfo.Time)
+                    end
+                    -- Attack via VIM
+                    local ok,VIM=pcall(function() return game:GetService("VirtualInputManager") end)
+                    if ok and VIM then
+                        pcall(function()
+                            VIM:SendMouseButtonEvent(0,0,0,true,game,1)
+                            task.delay(0.06, function()
+                                pcall(function() VIM:SendMouseButtonEvent(0,0,0,false,game,1) end)
+                            end)
+                        end)
+                    end
+                end
+            end
+            task.wait(0.1)
+        end
+        if _farmThread==th then _farmThread=nil end
+    end)
+end
+
+-- ═══════════════════════════════════════════════
+--              MAIN HEARTBEAT LOOP
+-- ═══════════════════════════════════════════════
+RunService.Heartbeat:Connect(function()
+    if not Hum or not Char or not HRP then return end
+    if not (Hum.Parent and Char.Parent and HRP.Parent) then return end
+
+    -- Speed Hack
+    if S.Speed then Hum.WalkSpeed=S.WalkSpeed end
+
+    -- Super Jump
+    if S.SuperJump then
+        Hum.JumpHeight=S.JumpHeight
+        if Hum.UseJumpPower then Hum.JumpPower=S.JumpHeight*0.5 end
+    end
+
+    -- Fly
+    if S.Fly then
+        if not _flyBV then _enableFly() end
+        if _flyBV and _flyBG then
+            local cf=Camera.CFrame; _flyBG.CFrame=cf
+            local d=Vector3.zero
+            if UserInputService:IsKeyDown(Enum.KeyCode.W)         then d=d+cf.LookVector  end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S)         then d=d-cf.LookVector  end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A)         then d=d-cf.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D)         then d=d+cf.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space)     then d=d+Vector3.new(0,1,0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then d=d-Vector3.new(0,1,0) end
+            _flyBV.Velocity=(d.Magnitude>0 and d.Unit or Vector3.zero)*S.FlySpeed
+        end
+    elseif _flyBV then
+        _disableFly()
+    end
+
+    -- Walk on Water: counteract sinking force
+    if S.WalkOnWater then
+        pcall(function()
+            if Hum:GetState()==Enum.HumanoidStateType.Swimming then
+                Hum:ChangeState(Enum.HumanoidStateType.Running)
+            end
+        end)
+    end
+
+    -- No Ragdoll
+    if S.NoRagdoll then
+        if not S.Fly then Hum.PlatformStand=false end
+        pcall(function()
+            if Char:GetAttribute("Ragdolled")==true then Char:SetAttribute("Ragdolled",false) end
+        end)
+    end
+
+    -- No Parry Stun
+    if S.NoParryStun then
+        pcall(function()
+            if Char:GetAttribute("Stunned")==true    then Char:SetAttribute("Stunned",false)   end
+            if Char:GetAttribute("ParryStun")==true  then Char:SetAttribute("ParryStun",false) end
+        end)
+    end
+
+    -- No Explosive KB
+    if S.NoExpKB then
+        pcall(function()
+            if Char:GetAttribute("Knockback")~=nil then Char:SetAttribute("Knockback",Vector3.zero) end
+        end)
+    end
+
+    -- No Dash CD
+    if S.NoDashCD then
+        pcall(function()
+            for _,k in ipairs({"DashCooldown","dashCooldown","DashCD","DashCd","dashCD"}) do
+                if Char:GetAttribute(k)~=nil then Char:SetAttribute(k,0) end
+            end
+        end)
+    end
+
+    -- No Jump CD
+    if S.NoJumpCD then
+        pcall(function()
+            for _,k in ipairs({"JumpCooldown","jumpCooldown","JumpCD","JumpCd"}) do
+                if Char:GetAttribute(k)~=nil then Char:SetAttribute(k,0) end
+            end
+        end)
+    end
+
+    -- Infinite Stamina
+    if S.InfStamina and not _staminaThread then _startStamina() end
+
+    -- Parry Invisible
+    if S.ParryInvis then
+        pcall(function()
+            for _,p in pairs(Char:GetChildren()) do
+                if p:IsA("BasePart") and p.Transparency<1 then p.LocalTransparencyModifier=1 end
+            end
+        end)
+    end
+
+    -- No Effects
+    if S.NoEffects then
+        pcall(function()
+            for _,v in pairs(Workspace:GetDescendants()) do
+                if v:IsA("ParticleEmitter") or v:IsA("Beam") or v:IsA("Trail") then
+                    v.Enabled=false
+                end
+            end
+        end)
+    end
+
+    -- Kill Aura
+    if S.KillAura then
+        local now=tick()
+        if (now-_lastKillAura)>=0.08 then
+            _lastKillAura=now
+            local enemies=_getEnemies()
+            if #enemies>0 then
+                local target=enemies[1]
+                if S.KillMethod=="VIM" then
+                    local ok,VIM=pcall(function() return game:GetService("VirtualInputManager") end)
+                    if ok and VIM then
+                        pcall(function()
+                            VIM:SendMouseButtonEvent(0,0,0,true,game,1)
+                            task.delay(0.05,function()
+                                pcall(function() VIM:SendMouseButtonEvent(0,0,0,false,game,1) end)
+                            end)
+                        end)
+                    end
+                else -- Remote
+                    if _attackRemote then
+                        pcall(function()
+                            if _attackRemote:IsA("RemoteEvent") then
+                                _attackRemote:FireServer(target.c,target.hrp.Position)
+                            else
+                                _attackRemote:InvokeServer(target.c,target.hrp.Position)
+                            end
+                        end)
+                    end
+                end
+            end
+        end
+    end
+
+    -- Torso Hitbox
+    if S.TorsoHB then
+        for _,p in pairs(Players:GetPlayers()) do
+            if p~=LP and p.Character then pcall(function() _expandTorso(p.Character,S.TorsoSize) end) end
+        end
+    else
+        for _,p in pairs(Players:GetPlayers()) do
+            if p~=LP and p.Character then
+                if _origSizes[tostring(p.Character)] then pcall(function() _restoreTorso(p.Character) end) end
+            end
+        end
+    end
+
+    -- Melee Extender
+    if S.MeleeExt then
+        local tool=Char:FindFirstChildOfClass("Tool")
+        if tool then
+            for _,part in pairs(tool:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    pcall(function() part.Size=Vector3.new(S.MeleeSize,S.MeleeSize,S.MeleeSize) end)
+                end
+            end
+        end
+    end
+
+    -- Instant C4 / Throw / Use (zero cooldowns on utility items)
+    if S.InstantC4 or S.InstantThrow or S.InstantUse then
+        pcall(function()
+            for _,k in ipairs({"C4Cooldown","ThrowCooldown","UseCooldown","ItemCooldown","UtilityCooldown"}) do
+                if Char:GetAttribute(k)~=nil then Char:SetAttribute(k,0) end
+            end
+        end)
+    end
+
+    -- No Utility Damage
+    if S.NoUtilDmg then
+        pcall(function()
+            if Char:GetAttribute("UtilityDamage")~=nil then Char:SetAttribute("UtilityDamage",0) end
+        end)
+    end
+
+    -- Fake Swing (fire attack animation without hitting)
+    if S.FakeSwing then
+        local now=tick()
+        if (now-_lastKillAura)>=0.5 then
+            _lastKillAura=now
+            local ok,VIM=pcall(function() return game:GetService("VirtualInputManager") end)
+            if ok and VIM then
+                pcall(function()
+                    VIM:SendMouseButtonEvent(0,0,0,true,game,1)
+                    task.delay(0.04,function()
+                        pcall(function() VIM:SendMouseButtonEvent(0,0,0,false,game,1) end)
+                    end)
+                end)
+            end
+        end
+    end
+
+    -- Autofarm
+    if S.Autofarm and not _farmThread then _startAutofarm() end
+
+    -- Aggressive Mouse Unlock
+    if S.AggressiveMouse then
+        pcall(function() game:GetService("UserInputService").MouseBehavior=Enum.MouseBehavior.Default end)
+    end
+
+    -- ESP
+    if S.ESP then
+        for _,pl in pairs(Players:GetPlayers()) do
+            if pl==LP then continue end
+            local c=pl.Character
+            if not c then _hideESP(_espObjs[pl.UserId]); continue end
+            local hrp=c:FindFirstChild("HumanoidRootPart")
+            local hum=c:FindFirstChild("Humanoid")
+            if not hrp or not hum then _hideESP(_espObjs[pl.UserId]); continue end
+            local o=_espObjs[pl.UserId]
+            if not o then _makeESP(pl); o=_espObjs[pl.UserId] end
+            if not o then continue end
+
+            local hs,hsV=Camera:WorldToViewportPoint(hrp.Position+Vector3.new(0,3.2,0))
+            local fs,fsV=Camera:WorldToViewportPoint(hrp.Position-Vector3.new(0,3.2,0))
+            if not hsV then _hideESP(o); continue end
+
+            local hsP=Vector2.new(hs.X,hs.Y); local fsP=Vector2.new(fs.X,fs.Y)
+
+            -- Name
+            if S.ShowNames then
+                o.name.Position=Vector2.new(hs.X,hs.Y-16); o.name.Text=pl.Name; o.name.Visible=true
+            else o.name.Visible=false end
+
+            -- Distance
+            if S.ShowDist then
+                local dist=math.floor((HRP.Position-hrp.Position).Magnitude)
+                o.dist.Position=Vector2.new(fs.X,fs.Y+4); o.dist.Text=dist.."m"; o.dist.Visible=true
+            else o.dist.Visible=false end
+
+            -- HP bar
+            if S.ShowHpBar then
+                local hp=math.clamp(hum.Health/math.max(hum.MaxHealth,1),0,1)
+                local barH=fsP.Y-hsP.Y
+                local bx=hsP.X-(fsP-hsP).Magnitude*0.5-6
+                o.hpBg.From=Vector2.new(bx,hsP.Y); o.hpBg.To=Vector2.new(bx,fsP.Y); o.hpBg.Visible=true
+                o.hpBar.From=Vector2.new(bx,hsP.Y+barH*(1-hp)); o.hpBar.To=Vector2.new(bx,fsP.Y); o.hpBar.Visible=true
+            else o.hpBg.Visible=false; o.hpBar.Visible=false end
+
+            -- Corner box
+            if S.CornerBox then _drawCornerBox(o.boxes,hsP,fsP)
+            else for _,ln in ipairs(o.boxes) do ln.Visible=false end end
+        end
+    else
+        for _,pl in pairs(Players:GetPlayers()) do
+            if pl~=LP then _hideESP(_espObjs[pl.UserId]) end
+        end
+    end
+
+    -- Chams
+    if S.Chams then
+        for _,pl in pairs(Players:GetPlayers()) do
+            if pl~=LP then pcall(function() _updateChams(pl) end) end
+        end
+    else
+        for id,box in pairs(_chamObjs) do
+            pcall(function() box:Destroy() end); _chamObjs[id]=nil
+        end
+    end
+end)
+
+warn("[PM HUB] Loaded — MaxHub UI Style | RightShift = Hide/Show")
